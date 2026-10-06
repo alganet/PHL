@@ -334,13 +334,13 @@ Coverage: 616/713 lines (86.40%)
 |    - |  324 | ` * not executed.` |
 |    - |  325 | ` */` |
 |  930 |  326 | `PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql)` |
-|    3 |  327 | `{` |
+|    4 |  327 | `{` |
 |    - |  328 | `	int rc;` |
-|  933 |  329 | `	if( pSt->pConn->pDb == 0 ){` |
+|  934 |  329 | `	if( pSt->pConn->pDb == 0 ){` |
 |  ! 0 |  330 | `		return 0;` |
 |    - |  331 | `	}` |
-|  933 |  332 | `	rc = sqlite3_prepare_v2(pSt->pConn->pDb,zSql,nSql,&pSt->pStmt,0);` |
-|  933 |  333 | `	if( rc != SQLITE_OK \|\| pSt->pStmt == 0 ){` |
+|  934 |  332 | `	rc = sqlite3_prepare_v2(pSt->pConn->pDb,zSql,nSql,&pSt->pStmt,0);` |
+|  934 |  333 | `	if( rc != SQLITE_OK \|\| pSt->pStmt == 0 ){` |
 |    9 |  334 | `		PH7_PdoSqliteTakeError(pSt->pConn);` |
 |    9 |  335 | `		if( pSt->pStmt ){` |
 |  ! 0 |  336 | `			sqlite3_finalize(pSt->pStmt);` |
@@ -348,39 +348,39 @@ Coverage: 616/713 lines (86.40%)
 |  ! 0 |  338 | `		}` |
 |    9 |  339 | `		return 0;` |
 |    - |  340 | `	}` |
-|  925 |  341 | `	return 1;` |
-|  468 |  342 | `}` |
+|  926 |  341 | `	return 1;` |
+|  469 |  342 | `}` |
 |    - |  343 | `/*` |
 |    - |  344 | ` * One step of the cursor: 1 when a row is available, 0 when the walk is over,` |
 |    - |  345 | ` * -1 on failure (with the connection's error set).` |
 |    - |  346 | ` */` |
 | 1478 |  347 | `PH7_PRIVATE int PH7_PdoSqliteStep(phl_pdo_stmt *pSt)` |
-|    3 |  348 | `{` |
+|    4 |  348 | `{` |
 |    - |  349 | `	int rc;` |
-| 1481 |  350 | `	if( pSt->pStmt == 0 ){` |
+| 1482 |  350 | `	if( pSt->pStmt == 0 ){` |
 |  ! 0 |  351 | `		return 0;` |
 |    - |  352 | `	}` |
-| 1481 |  353 | `	rc = sqlite3_step(pSt->pStmt);` |
-| 1481 |  354 | `	if( rc == SQLITE_ROW ){` |
-| 1209 |  355 | `		return 1;` |
+| 1482 |  353 | `	rc = sqlite3_step(pSt->pStmt);` |
+| 1482 |  354 | `	if( rc == SQLITE_ROW ){` |
+| 1210 |  355 | `		return 1;` |
 |    - |  356 | `	}` |
 |  274 |  357 | `	if( rc == SQLITE_DONE ){` |
 |  270 |  358 | `		return 0;` |
 |    - |  359 | `	}` |
 |    5 |  360 | `	PH7_PdoSqliteTakeError(pSt->pConn);` |
 |    5 |  361 | `	return -1;` |
-|  742 |  362 | `}` |
+|  743 |  362 | `}` |
 | 1846 |  363 | `PH7_PRIVATE void PH7_PdoSqliteFinalize(phl_pdo_stmt *pSt)` |
-|    3 |  364 | `{` |
-| 1849 |  365 | `	if( pSt->pStmt ){` |
-|  925 |  366 | `		sqlite3_finalize(pSt->pStmt);` |
-|  925 |  367 | `		pSt->pStmt = 0;` |
+|    4 |  364 | `{` |
+| 1850 |  365 | `	if( pSt->pStmt ){` |
+|  926 |  366 | `		sqlite3_finalize(pSt->pStmt);` |
+|  926 |  367 | `		pSt->pStmt = 0;` |
 |  461 |  368 | `	}` |
-| 1849 |  369 | `}` |
+| 1850 |  369 | `}` |
 | 2048 |  370 | `PH7_PRIVATE int PH7_PdoSqliteColumnCount(phl_pdo_stmt *pSt)` |
-|    3 |  371 | `{` |
-| 2051 |  372 | `	return pSt->pStmt ? sqlite3_column_count(pSt->pStmt) : 0;` |
-|    3 |  373 | `}` |
+|    4 |  371 | `{` |
+| 2052 |  372 | `	return pSt->pStmt ? sqlite3_column_count(pSt->pStmt) : 0;` |
+|    4 |  373 | `}` |
 |    - |  374 | `/*` |
 |    - |  375 | ` * Rewind a statement so it can run again.  The bindings go too: php re-binds` |
 |    - |  376 | ` * everything on every execute(), so a value bound for the previous run must` |
@@ -1091,7 +1091,7 @@ Coverage: 616/713 lines (86.40%)
 |    - | 1081 | `` * after PH7_VmInstallPdo -- `Pdo\Sqlite` extends PDO, so the parent must`` |
 |    - | 1082 | ` * already be mounted.` |
 |    - | 1083 | ` */` |
-| 7925 | 1084 | `PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm)` |
+| 8445 | 1084 | `PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm)` |
 |    5 | 1085 | `{` |
 |    - | 1086 | `#define PDO_SQLITE_INT_CONST(NAME,VALUE) \` |
 |    - | 1087 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (ph7_int64)(VALUE), 0, 0.0 }` |
@@ -1150,7 +1150,7 @@ Coverage: 616/713 lines (86.40%)
 |    - | 1140 | `		0, 0, 0` |
 |    - | 1141 | `	};` |
 |    - | 1142 | `#undef PDO_SQLITE_INT_CONST` |
-| 7930 | 1143 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+| 8450 | 1143 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |    5 | 1144 | `}` |
 |    - | 1145 |  |
 |    - | 1146 | `#else` |

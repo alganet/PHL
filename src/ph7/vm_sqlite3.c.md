@@ -318,14 +318,14 @@ Coverage: 1660/1898 lines (87.46%)
 |    ! 0 |  308 | `	}` |
 |    176 |  309 | `	SyMemBackendFree(&pVm->sAllocator,pConn);` |
 |    176 |  310 | `}` |
-|   6717 |  311 | `static void Sq3VmSweep(ph7_vm *pVm)` |
+|   7011 |  311 | `static void Sq3VmSweep(ph7_vm *pVm)` |
 |      5 |  312 | `{` |
-|   6894 |  313 | `	while( pVm->pSq3Conns ){` |
+|   7188 |  313 | `	while( pVm->pSq3Conns ){` |
 |    176 |  314 | `		phl_sq3 *pConn = (phl_sq3 *)pVm->pSq3Conns;` |
 |    176 |  315 | `		Sq3BlankSlot(pConn->pOwner);` |
 |    176 |  316 | `		Sq3FreeConn(pConn);` |
 |      4 |  317 | `	}` |
-|   6722 |  318 | `}` |
+|   7016 |  318 | `}` |
 |      - |  319 | `/*` |
 |      - |  320 | ` * A reused VM (the -S server's) must not answer the next request through a` |
 |      - |  321 | ` * handle this one opened, and a sqlite3 handle lives outside SyMemBackend, so` |
@@ -335,10 +335,10 @@ Coverage: 1660/1898 lines (87.46%)
 |    ! 0 |  325 | `{` |
 |     16 |  326 | `	Sq3VmSweep(&(*pVm));` |
 |     16 |  327 | `}` |
-|   6701 |  328 | `PH7_PRIVATE void PH7_Sqlite3VmRelease(ph7_vm *pVm)` |
+|   6995 |  328 | `PH7_PRIVATE void PH7_Sqlite3VmRelease(ph7_vm *pVm)` |
 |      5 |  329 | `{` |
-|   6706 |  330 | `	Sq3VmSweep(&(*pVm));` |
-|   6706 |  331 | `}` |
+|   7000 |  330 | `	Sq3VmSweep(&(*pVm));` |
+|   7000 |  331 | `}` |
 |      - |  332 |  |
 |      - |  333 | `/* ------------------------------------------------------------------------` |
 |      - |  334 | ` * The object and its hidden slot` |
@@ -3192,19 +3192,19 @@ Coverage: 1660/1898 lines (87.46%)
 |      - | 3182 | `	{ "SQLITE3_OPEN_CREATE",    SQLITE_OPEN_CREATE },` |
 |      - | 3183 | `	{ "SQLITE3_DETERMINISTIC",  SQLITE_DETERMINISTIC },` |
 |      - | 3184 | `};` |
-|    954 | 3185 | `static void Sq3ConstExpand(ph7_value *pVal,void *pUserData)` |
-|      4 | 3186 | `{` |
-|    958 | 3187 | `	ph7_value_int64(pVal,((const struct Sq3Constant *)pUserData)->iValue);` |
-|    958 | 3188 | `}` |
-|   7925 | 3189 | `PH7_PRIVATE void PH7_RegisterSqlite3Constants(ph7_vm *pVm)` |
+|   1074 | 3185 | `static void Sq3ConstExpand(ph7_value *pVal,void *pUserData)` |
+|      5 | 3186 | `{` |
+|   1079 | 3187 | `	ph7_value_int64(pVal,((const struct Sq3Constant *)pUserData)->iValue);` |
+|   1079 | 3188 | `}` |
+|   8445 | 3189 | `PH7_PRIVATE void PH7_RegisterSqlite3Constants(ph7_vm *pVm)` |
 |      5 | 3190 | `{` |
 |      - | 3191 | `	sxu32 n;` |
-| 103030 | 3192 | `	for( n = 0 ; n < SX_ARRAYSIZE(aSq3Const) ; ++n ){` |
-| 142589 | 3193 | `		ph7_create_constant(&(*pVm),aSq3Const[n].zName,Sq3ConstExpand,` |
-|  95100 | 3194 | `			(void *)&aSq3Const[n]);` |
-|  47489 | 3195 | `	}` |
-|   7930 | 3196 | `}` |
-|   7925 | 3197 | `PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)` |
+| 109790 | 3192 | `	for( n = 0 ; n < SX_ARRAYSIZE(aSq3Const) ; ++n ){` |
+| 151949 | 3193 | `		ph7_create_constant(&(*pVm),aSq3Const[n].zName,Sq3ConstExpand,` |
+| 101340 | 3194 | `			(void *)&aSq3Const[n]);` |
+|  50609 | 3195 | `	}` |
+|   8450 | 3196 | `}` |
+|   8445 | 3197 | `PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)` |
 |      5 | 3198 | `{` |
 |      - | 3199 | `#define SQ3_INT_CONST(NAME,VALUE) \` |
 |      - | 3200 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (ph7_int64)(VALUE), 0, 0.0 }` |
@@ -3403,9 +3403,9 @@ Coverage: 1660/1898 lines (87.46%)
 |      - | 3393 | `		  Sq3ResInstanceRelease, 0, 0 },` |
 |      - | 3394 | `	};` |
 |      - | 3395 | `#undef SQ3_INT_CONST` |
-|   7930 | 3396 | `	pVm->pSq3Conns = 0;` |
-|   7930 | 3397 | `	PH7_RegisterSqlite3Constants(&(*pVm));` |
-|   7930 | 3398 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|   8450 | 3396 | `	pVm->pSq3Conns = 0;` |
+|   8450 | 3397 | `	PH7_RegisterSqlite3Constants(&(*pVm));` |
+|   8450 | 3398 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |      5 | 3399 | `}` |
 |      - | 3400 |  |
 |      - | 3401 | `#else` |

@@ -2210,15 +2210,15 @@ Coverage: 1221/1679 lines (72.72%)
 |    - | 2200 | `/* ------------------------------------------------------------------------` |
 |    - | 2201 | ` * Installation` |
 |    - | 2202 | ` * ------------------------------------------------------------------------ */` |
-| 7925 | 2203 | `PH7_PRIVATE sxi32 PH7_VmInstallOpenSslX509(ph7_vm *pVm)` |
+| 8445 | 2203 | `PH7_PRIVATE sxi32 PH7_VmInstallOpenSslX509(ph7_vm *pVm)` |
 |    5 | 2204 | `{` |
 |    - | 2205 | `	/* The three handle classes are installed by the other unit, which mounts` |
 |    - | 2206 | `	 * this one; there is nothing of its own to declare here. */` |
-| 3957 | 2207 | `	SXUNUSED(pVm);` |
-| 7930 | 2208 | `	return SXRET_OK;` |
+| 4217 | 2207 | `	SXUNUSED(pVm);` |
+| 8450 | 2208 | `	return SXRET_OK;` |
 |    5 | 2209 | `}` |
 |    - | 2210 | `/* The functions this unit owns, in php's own registration order. */` |
-| 7925 | 2211 | `PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslX509FuncTable(sxu32 *pnEntry)` |
+| 8445 | 2211 | `PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslX509FuncTable(sxu32 *pnEntry)` |
 |    5 | 2212 | `{` |
 |    - | 2213 | `	static const ph7_builtin_func aFunc[] = {` |
 |    - | 2214 | `		{ "openssl_x509_export_to_file",    vm_builtin_openssl_x509_export_to_file    },` |
@@ -2249,8 +2249,8 @@ Coverage: 1221/1679 lines (72.72%)
 |    - | 2239 | `		{ "openssl_cms_decrypt",            vm_builtin_openssl_cms_decrypt            },` |
 |    - | 2240 | `		{ "openssl_cms_read",               vm_builtin_openssl_cms_read               }` |
 |    - | 2241 | `	};` |
-| 7930 | 2242 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
-| 7930 | 2243 | `	return aFunc;` |
+| 8450 | 2242 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
+| 8450 | 2243 | `	return aFunc;` |
 |    5 | 2244 | `}` |
 |    - | 2245 |  |
 |    - | 2246 | `#else` |

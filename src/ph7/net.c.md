@@ -53,17 +53,17 @@ Coverage: 455/555 lines (81.98%)
 |    - |   43 | `` * wire has (php's own truncation, `-1` becoming 65535), where handing`` |
 |    - |   44 | ` * getaddrinfo() the digits would make it an unresolvable address instead.` |
 |    - |   45 | ` */` |
-|  781 |   46 | `static void NetStampPort(struct sockaddr *pAddr,int iPort)` |
+|  778 |   46 | `static void NetStampPort(struct sockaddr *pAddr,int iPort)` |
 |    5 |   47 | `{` |
-|  786 |   48 | `	if( pAddr == 0 ){` |
+|  783 |   48 | `	if( pAddr == 0 ){` |
 |  ! 0 |   49 | `		return;` |
 |    - |   50 | `	}` |
-|  786 |   51 | `	if( pAddr->sa_family == AF_INET ){` |
-|  743 |   52 | `		((struct sockaddr_in *)pAddr)->sin_port = htons((unsigned short)iPort);` |
-|  415 |   53 | `	}else if( pAddr->sa_family == AF_INET6 ){` |
+|  783 |   51 | `	if( pAddr->sa_family == AF_INET ){` |
+|  740 |   52 | `		((struct sockaddr_in *)pAddr)->sin_port = htons((unsigned short)iPort);` |
+|  412 |   53 | `	}else if( pAddr->sa_family == AF_INET6 ){` |
 |   44 |   54 | `		((struct sockaddr_in6 *)pAddr)->sin6_port = htons((unsigned short)iPort);` |
 |   21 |   55 | `	}` |
-|  397 |   56 | `}` |
+|  394 |   56 | `}` |
 |    - |   57 | `/* Defined with the address helpers further down; used by the three callers that` |
 |    - |   58 | ` * report an address to a script. */` |
 |    - |   59 | `static int NetFormatAddr(const struct sockaddr *pAddr,char *zBuf,int nBuf);` |
@@ -72,31 +72,31 @@ Coverage: 455/555 lines (81.98%)
 |    - |   62 | `` * declares the last parameter `size_t` and POSIX `socklen_t`, and /W4 /WX will`` |
 |    - |   63 | ` * not take a plain int for either.` |
 |    - |   64 | ` */` |
-|  179 |   65 | `static void NetInetNtop(int iFamily,const void *pSrc,char *zBuf,int nBuf)` |
+|  180 |   65 | `static void NetInetNtop(int iFamily,const void *pSrc,char *zBuf,int nBuf)` |
 |    4 |   66 | `{` |
 |    - |   67 | `#ifdef __WINNT__` |
 |    4 |   68 | `	inet_ntop(iFamily,pSrc,zBuf,(size_t)nBuf);` |
 |    - |   69 | `#else` |
-|  179 |   70 | `	inet_ntop(iFamily,pSrc,zBuf,(socklen_t)nBuf);` |
+|  180 |   70 | `	inet_ntop(iFamily,pSrc,zBuf,(socklen_t)nBuf);` |
 |    - |   71 | `#endif` |
-|  183 |   72 | `}` |
-|  781 |   73 | `static void NetApplySockOpts(ph7_socket sock,const ph7_sockopts *pOpt)` |
+|  184 |   72 | `}` |
+|  778 |   73 | `static void NetApplySockOpts(ph7_socket sock,const ph7_sockopts *pOpt)` |
 |    5 |   74 | `{` |
-|  786 |   75 | `	int on = 1;` |
-|  786 |   76 | `	if( pOpt == 0 ){` |
+|  783 |   75 | `	int on = 1;` |
+|  783 |   76 | `	if( pOpt == 0 ){` |
 |  347 |   77 | `		return;` |
 |    - |   78 | `	}` |
-|  441 |   79 | `	if( pOpt->bReusePort ){` |
+|  438 |   79 | `	if( pOpt->bReusePort ){` |
 |    - |   80 | `#ifdef SO_REUSEPORT` |
 |    4 |   81 | `		setsockopt(sock,SOL_SOCKET,SO_REUSEPORT,(const char *)&on,sizeof(on));` |
 |    - |   82 | `#endif` |
 |    2 |   83 | `	}` |
-|  441 |   84 | `	if( pOpt->bNoDelay ){` |
+|  438 |   84 | `	if( pOpt->bNoDelay ){` |
 |    - |   85 | `#ifdef TCP_NODELAY` |
 |    8 |   86 | `		setsockopt(sock,IPPROTO_TCP,TCP_NODELAY,(const char *)&on,sizeof(on));` |
 |    - |   87 | `#endif` |
 |    3 |   88 | `	}` |
-|  441 |   89 | `	if( pOpt->bBroadcast ){` |
+|  438 |   89 | `	if( pOpt->bBroadcast ){` |
 |    - |   90 | ``		/* The one `socket` option that is a PERMISSION rather than a tuning`` |
 |    - |   91 | `		 * knob: without it the OS refuses a datagram addressed to a broadcast` |
 |    - |   92 | `		 * address outright (EACCES at the connect, or at the sendto for a bound` |
@@ -107,7 +107,7 @@ Coverage: 455/555 lines (81.98%)
 |  ! 0 |   97 | `		setsockopt(sock,SOL_SOCKET,SO_BROADCAST,(const char *)&on,sizeof(on));` |
 |    - |   98 | `#endif` |
 |  ! 0 |   99 | `	}` |
-|  397 |  100 | `}` |
+|  394 |  100 | `}` |
 |    - |  101 | `/*` |
 |    - |  102 | `` * `bindto`: the LOCAL address a client socket takes before it connects, which`` |
 |    - |  103 | ` * is how a program picks the interface (or the source port) its connection goes` |
@@ -161,14 +161,14 @@ Coverage: 455/555 lines (81.98%)
 |    - |  151 | ` * errno at all, so a caller reading errno there reads whatever the last` |
 |    - |  152 | ` * unrelated CRT call left behind.` |
 |    - |  153 | ` */` |
-|  164 |  154 | `PH7_PRIVATE int PH7_NetLastError(void)` |
-|    5 |  155 | `{` |
+|  161 |  154 | `PH7_PRIVATE int PH7_NetLastError(void)` |
+|    4 |  155 | `{` |
 |    - |  156 | `#ifdef __WINNT__` |
-|    5 |  157 | `	return WSAGetLastError();` |
+|    4 |  157 | `	return WSAGetLastError();` |
 |    - |  158 | `#else` |
-|  164 |  159 | `	return errno;` |
+|  161 |  159 | `	return errno;` |
 |    - |  160 | `#endif` |
-|    5 |  161 | `}` |
+|    4 |  161 | `}` |
 |    - |  162 | `/*` |
 |    - |  163 | ` * The message php words a socket failure with. php's own POSIX build answers` |
 |    - |  164 | ` * strerror(), which is what a script comparing an $errstr against a documented` |
@@ -177,7 +177,7 @@ Coverage: 455/555 lines (81.98%)
 |    - |  167 | ` * strerror() (which would answer for a completely different errno) — the` |
 |    - |  168 | ` * FormatMessage() prose php's Windows build answers is its own (recorded).` |
 |    - |  169 | ` */` |
-|  164 |  170 | `PH7_PRIVATE const char * PH7_NetStrError(int iErr)` |
+|  161 |  170 | `PH7_PRIVATE const char * PH7_NetStrError(int iErr)` |
 |    3 |  171 | `{` |
 |    - |  172 | `#ifdef __WINNT__` |
 |    - |  173 | `	static const struct { int iCode; const char *zMsg; } aWsa[] = {` |
@@ -217,7 +217,7 @@ Coverage: 455/555 lines (81.98%)
 |    3 |  207 | `	}` |
 |  ! 0 |  208 | `	return "Unknown error";` |
 |    - |  209 | `#else` |
-|  164 |  210 | `	return strerror(iErr);` |
+|  161 |  210 | `	return strerror(iErr);` |
 |    - |  211 | `#endif` |
 |    3 |  212 | `}` |
 |    - |  213 | `/*` |
@@ -225,13 +225,13 @@ Coverage: 455/555 lines (81.98%)
 |    - |  215 | ` * one failure php does not report as an error: a read answers "" or false by` |
 |    - |  216 | ` * the handle's own rules, and a write answers what it managed to send.` |
 |    - |  217 | ` */` |
-|   38 |  218 | `PH7_PRIVATE int PH7_NetWouldBlock(void)` |
+|   44 |  218 | `PH7_PRIVATE int PH7_NetWouldBlock(void)` |
 |    3 |  219 | `{` |
 |    - |  220 | `#ifdef __WINNT__` |
 |    3 |  221 | `	int iErr = WSAGetLastError();` |
 |    3 |  222 | `	return iErr == WSAEWOULDBLOCK \|\| iErr == WSAETIMEDOUT;` |
 |    - |  223 | `#else` |
-|   38 |  224 | `	return errno == EAGAIN \|\| errno == EWOULDBLOCK \|\| errno == EINTR;` |
+|   44 |  224 | `	return errno == EAGAIN \|\| errno == EWOULDBLOCK \|\| errno == EINTR;` |
 |    - |  225 | `#endif` |
 |    3 |  226 | `}` |
 |    - |  227 | `/*` |
@@ -243,7 +243,7 @@ Coverage: 455/555 lines (81.98%)
 |    - |  233 | ` * FD_SETSIZE cannot be put in an fd_set at all, and a long-running server is` |
 |    - |  234 | ` * exactly the program that reaches those numbers.` |
 |    - |  235 | ` */` |
-|  143 |  236 | `PH7_PRIVATE int PH7_NetWait(ph7_socket sock,int bWrite,int iTimeoutMs)` |
+|  142 |  236 | `PH7_PRIVATE int PH7_NetWait(ph7_socket sock,int bWrite,int iTimeoutMs)` |
 |    4 |  237 | `{` |
 |    - |  238 | `#ifdef __WINNT__` |
 |    - |  239 | `	fd_set sSet;` |
@@ -267,23 +267,23 @@ Coverage: 455/555 lines (81.98%)
 |    - |  257 | `#else` |
 |    - |  258 | `	struct pollfd sPoll;` |
 |    - |  259 | `	int rc;` |
-|  143 |  260 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
+|  142 |  260 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
 |    - |  261 | `		/* See above: nothing to wait on is an expiry, and poll() would answer` |
 |    - |  262 | `		 * POLLNVAL for it, which looks like readiness. */` |
 |    2 |  263 | `		return 0;` |
 |    - |  264 | `	}` |
-|  141 |  265 | `	sPoll.fd = sock;` |
-|  141 |  266 | `	sPoll.events = (short)(bWrite ? POLLOUT : POLLIN);` |
-|  141 |  267 | `	sPoll.revents = 0;` |
+|  140 |  265 | `	sPoll.fd = sock;` |
+|  140 |  266 | `	sPoll.events = (short)(bWrite ? POLLOUT : POLLIN);` |
+|  140 |  267 | `	sPoll.revents = 0;` |
 |   70 |  268 | `	for(;;){` |
 |   70 |  269 | `		rc = poll(&sPoll,1,iTimeoutMs);` |
-|  141 |  270 | `		if( rc < 0 && errno == EINTR ){` |
+|  140 |  270 | `		if( rc < 0 && errno == EINTR ){` |
 |    - |  271 | `			/* A signal is not an answer to the question that was asked. */` |
 |  ! 0 |  272 | `			continue;` |
 |    - |  273 | `		}` |
-|  141 |  274 | `		break;` |
+|  140 |  274 | `		break;` |
 |    - |  275 | `	}` |
-|  141 |  276 | `	return rc < 0 ? -1 : (rc > 0 ? 1 : 0);` |
+|  140 |  276 | `	return rc < 0 ? -1 : (rc > 0 ? 1 : 0);` |
 |    - |  277 | `#endif` |
 |   75 |  278 | `}` |
 |    - |  279 |  |
@@ -315,18 +315,18 @@ Coverage: 455/555 lines (81.98%)
 |    - |  305 | ` * where php answers false. Both are invisible from a POSIX-only reading of a` |
 |    - |  306 | ` * program that never loses a peer.` |
 |    - |  307 | ` */` |
-|  853 |  308 | `PH7_PRIVATE int PH7_NetEnsureInit(void)` |
+|  850 |  308 | `PH7_PRIVATE int PH7_NetEnsureInit(void)` |
 |    5 |  309 | `{` |
 |    - |  310 | `	static int bReady = 0;` |
-|  858 |  311 | `	if( bReady ){` |
-|  717 |  312 | `		return PH7_OK;` |
+|  855 |  311 | `	if( bReady ){` |
+|  714 |  312 | `		return PH7_OK;` |
 |    - |  313 | `	}` |
 |  145 |  314 | `	if( PH7_NetInit() != PH7_OK ){` |
 |  ! 0 |  315 | `		return PH7_IO_ERR;` |
 |    - |  316 | `	}` |
 |  145 |  317 | `	bReady = 1;` |
 |  145 |  318 | `	return PH7_OK;` |
-|  433 |  319 | `}` |
+|  430 |  319 | `}` |
 |    - |  320 | `/*` |
 |    - |  321 | ` * Cleanup the networking subsystem.` |
 |    - |  322 | ` */` |
@@ -459,13 +459,13 @@ Coverage: 455/555 lines (81.98%)
 |   90 |  449 | `	memset(&addr, 0, sizeof(addr));` |
 |   94 |  450 | `	if( (bPeer ? getpeername(sock, (struct sockaddr *)&addr, &nLen)` |
 |   98 |  451 | `	           : getsockname(sock, (struct sockaddr *)&addr, &nLen)) != 0 ){` |
-|   16 |  452 | `		return -1;` |
+|   15 |  452 | `		return -1;` |
 |    - |  453 | `	}` |
 |    - |  454 | `	/* A sockaddr_in is too small to hold the answer for an IPv6 socket -- the` |
 |    - |  455 | `	 * OS truncates into whatever it is given -- so the buffer is the storage` |
 |    - |  456 | `	 * union. A socketpair has no address of any kind, and php answers false for` |
 |    - |  457 | `	 * one rather than inventing a name for it. */` |
-|   77 |  458 | `	return NetFormatAddr((struct sockaddr *)&addr, zBuf, nBuf) ? PH7_OK : -1;` |
+|   78 |  458 | `	return NetFormatAddr((struct sockaddr *)&addr, zBuf, nBuf) ? PH7_OK : -1;` |
 |   47 |  459 | `}` |
 |    - |  460 | `/*` |
 |    - |  461 | ` * accept() bounded by a timeout in milliseconds (a negative one blocks). The` |
@@ -522,20 +522,20 @@ Coverage: 455/555 lines (81.98%)
 |    - |  512 | ` * fsockopen() reports through its by-ref out-params.` |
 |    - |  513 | ` * Returns the connected socket, or PH7_NET_INVALID_SOCKET on error.` |
 |    - |  514 | ` */` |
-|  625 |  515 | `PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeoutMs,` |
+|  622 |  515 | `PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeoutMs,` |
 |    - |  516 | `	int bDgram, int bAsync, ph7_sockopts *pOpt, int *pErrno, const char **pzErr)` |
 |    5 |  517 | `{` |
-|  630 |  518 | `	struct addrinfo hints, *res = 0, *rp;` |
-|  630 |  519 | `	ph7_socket sock = PH7_NET_INVALID_SOCKET;` |
-|  630 |  520 | `	int iLastErr = 0;` |
-|  630 |  521 | `	if( pErrno ){ *pErrno = 0; }` |
-|  630 |  522 | `	if( pzErr ){ *pzErr = ""; }` |
-|  630 |  523 | `	if( PH7_NetEnsureInit() != PH7_OK ){` |
+|  627 |  518 | `	struct addrinfo hints, *res = 0, *rp;` |
+|  627 |  519 | `	ph7_socket sock = PH7_NET_INVALID_SOCKET;` |
+|  627 |  520 | `	int iLastErr = 0;` |
+|  627 |  521 | `	if( pErrno ){ *pErrno = 0; }` |
+|  627 |  522 | `	if( pzErr ){ *pzErr = ""; }` |
+|  627 |  523 | `	if( PH7_NetEnsureInit() != PH7_OK ){` |
 |  ! 0 |  524 | `		if( pErrno ){ *pErrno = -1; }` |
 |  ! 0 |  525 | `		if( pzErr ){ *pzErr = "Unable to start the networking subsystem"; }` |
 |  ! 0 |  526 | `		return PH7_NET_INVALID_SOCKET;` |
 |    - |  527 | `	}` |
-|  630 |  528 | `	if( zHost == 0 \|\| zHost[0] == 0 ){` |
+|  627 |  528 | `	if( zHost == 0 \|\| zHost[0] == 0 ){` |
 |    - |  529 | ``		/* An address whose host half is empty (`tcp://:9`, `[]:9`, an`` |
 |    - |  530 | `		 * fsockopen() with no hostname) is a NAME php hands to the resolver` |
 |    - |  531 | `		 * like any other, and the resolver is what refuses it -- twice, in the` |
@@ -546,42 +546,42 @@ Coverage: 455/555 lines (81.98%)
 |    3 |  536 | `		if( pzErr ){ *pzErr = 0; }` |
 |    3 |  537 | `		return PH7_NET_INVALID_SOCKET;` |
 |    - |  538 | `	}` |
-|  628 |  539 | `	memset(&hints, 0, sizeof(hints));` |
-|  628 |  540 | `	hints.ai_family = AF_UNSPEC;` |
-|  628 |  541 | `	hints.ai_socktype = bDgram ? SOCK_DGRAM : SOCK_STREAM;` |
-|  628 |  542 | `	if( getaddrinfo(zHost, 0, &hints, &res) != 0 \|\| res == 0 ){` |
+|  625 |  539 | `	memset(&hints, 0, sizeof(hints));` |
+|  625 |  540 | `	hints.ai_family = AF_UNSPEC;` |
+|  625 |  541 | `	hints.ai_socktype = bDgram ? SOCK_DGRAM : SOCK_STREAM;` |
+|  625 |  542 | `	if( getaddrinfo(zHost, 0, &hints, &res) != 0 \|\| res == 0 ){` |
 |    - |  543 | `		/* php words the HOST into this one and reports no OS code for it; the` |
 |    - |  544 | `		 * caller composes it, since only it has the name to interpolate. */` |
 |  ! 0 |  545 | `		if( pErrno ){ *pErrno = PH7_NET_ERR_RESOLVE; }` |
 |  ! 0 |  546 | `		if( pzErr ){ *pzErr = 0; }` |
 |  ! 0 |  547 | `		return PH7_NET_INVALID_SOCKET;` |
 |    - |  548 | `	}` |
-|  758 |  549 | `	for( rp = res ; rp != 0 ; rp = rp->ai_next ){` |
-|  630 |  550 | `		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);` |
-|  630 |  551 | `		if( sock == PH7_NET_INVALID_SOCKET ){` |
+|  752 |  549 | `	for( rp = res ; rp != 0 ; rp = rp->ai_next ){` |
+|  627 |  550 | `		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);` |
+|  627 |  551 | `		if( sock == PH7_NET_INVALID_SOCKET ){` |
 |  ! 0 |  552 | `			iLastErr = PH7_NetLastError();` |
 |  ! 0 |  553 | `			continue;` |
 |    - |  554 | `		}` |
-|  630 |  555 | `		NetStampPort(rp->ai_addr, iPort);` |
-|  630 |  556 | `		NetApplySockOpts(sock, pOpt);` |
-|  630 |  557 | `		if( pOpt ){` |
+|  627 |  555 | `		NetStampPort(rp->ai_addr, iPort);` |
+|  627 |  556 | `		NetApplySockOpts(sock, pOpt);` |
+|  627 |  557 | `		if( pOpt ){` |
 |    - |  558 | `			/* Per CANDIDATE: the failure that gets reported belongs to the socket` |
 |    - |  559 | `			 * that ends up carrying the connection, not to one abandoned earlier.` |
 |    - |  560 | `			 * php connects anyway when the local bind cannot be made; the caller` |
 |    - |  561 | `			 * words the warning, since only it knows the function name. */` |
-|  317 |  562 | `			pOpt->iBindErr = 0;` |
-|  317 |  563 | `			pOpt->iBindErrno = 0;` |
-|  317 |  564 | `			if( pOpt->zBindHost ){` |
+|  314 |  562 | `			pOpt->iBindErr = 0;` |
+|  314 |  563 | `			pOpt->iBindErrno = 0;` |
+|  314 |  564 | `			if( pOpt->zBindHost ){` |
 |   16 |  565 | `				pOpt->iBindErr = NetBindLocal(sock, rp->ai_family, pOpt->zBindHost,` |
 |    5 |  566 | `					pOpt->iBindPort, &pOpt->iBindErrno);` |
 |    5 |  567 | `			}` |
-|  158 |  568 | `		}` |
-|  630 |  569 | `		if( iTimeoutMs > 0 ){` |
+|  155 |  568 | `		}` |
+|  627 |  569 | `		if( iTimeoutMs > 0 ){` |
 |    - |  570 | `			/* the connect() itself stays blocking; the timeout bounds the` |
 |    - |  571 | `			 * subsequent recv/send (php applies it to both — recorded) */` |
-|  589 |  572 | `			PH7_NetSetTimeout(sock, iTimeoutMs);` |
-|  294 |  573 | `		}` |
-|  630 |  574 | `		if( bAsync ){` |
+|  586 |  572 | `			PH7_NetSetTimeout(sock, iTimeoutMs);` |
+|  291 |  573 | `		}` |
+|  627 |  574 | `		if( bAsync ){` |
 |    - |  575 | `			/* php's STREAM_CLIENT_ASYNC_CONNECT: the socket is put in` |
 |    - |  576 | `			 * non-blocking mode, connect() is ISSUED, and "in progress" is the` |
 |    - |  577 | `			 * answer the caller gets -- so a dial to a port nothing is` |
@@ -601,7 +601,7 @@ Coverage: 455/555 lines (81.98%)
 |  ! 0 |  591 | `			sock = PH7_NET_INVALID_SOCKET;` |
 |  ! 0 |  592 | `			continue;` |
 |    - |  593 | `		}` |
-|  626 |  594 | `		if( connect(sock, rp->ai_addr, (ph7_socklen)rp->ai_addrlen) == 0 ){` |
+|  623 |  594 | `		if( connect(sock, rp->ai_addr, (ph7_socklen)rp->ai_addrlen) == 0 ){` |
 |  495 |  595 | `			freeaddrinfo(res);` |
 |  495 |  596 | `			return sock;` |
 |    - |  597 | `		}` |
@@ -611,18 +611,18 @@ Coverage: 455/555 lines (81.98%)
 |    - |  601 | `		 * every failure, so a broadcast address refused for want of` |
 |    - |  602 | `		 * SO_BROADCAST, an unreachable network and a refused port were one` |
 |    - |  603 | `		 * answer. */` |
-|  134 |  604 | `		iLastErr = PH7_NetLastError();` |
-|  134 |  605 | `		PH7_NetClose(sock);` |
-|  134 |  606 | `		sock = PH7_NET_INVALID_SOCKET;` |
-|   70 |  607 | `	}` |
-|  131 |  608 | `	freeaddrinfo(res);` |
-|  131 |  609 | `	if( iLastErr == 0 ){` |
+|  131 |  604 | `		iLastErr = PH7_NetLastError();` |
+|  131 |  605 | `		PH7_NetClose(sock);` |
+|  131 |  606 | `		sock = PH7_NET_INVALID_SOCKET;` |
+|   67 |  607 | `	}` |
+|  128 |  608 | `	freeaddrinfo(res);` |
+|  128 |  609 | `	if( iLastErr == 0 ){` |
 |  ! 0 |  610 | `		iLastErr = 111; /* nothing was even tried: php's own default reason */` |
 |  ! 0 |  611 | `	}` |
-|  131 |  612 | `	if( pErrno ){ *pErrno = iLastErr; }` |
-|  131 |  613 | `	if( pzErr ){ *pzErr = PH7_NetStrError(iLastErr); }` |
-|  131 |  614 | `	return PH7_NET_INVALID_SOCKET;` |
-|  319 |  615 | `}` |
+|  128 |  612 | `	if( pErrno ){ *pErrno = iLastErr; }` |
+|  128 |  613 | `	if( pzErr ){ *pzErr = PH7_NetStrError(iLastErr); }` |
+|  128 |  614 | `	return PH7_NET_INVALID_SOCKET;` |
+|  316 |  615 | `}` |
 |    - |  616 | `/*` |
 |    - |  617 | ` * Accept an incoming connection on a listening socket.` |
 |    - |  618 | ` * If pAddr and pAddrLen are non-NULL, the client address is stored there.` |
@@ -636,17 +636,17 @@ Coverage: 455/555 lines (81.98%)
 |    - |  626 | ` * Receive data from a socket.` |
 |    - |  627 | ` * Returns the number of bytes received, or -1 on error.` |
 |    - |  628 | ` */` |
-|  618 |  629 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
+|  614 |  629 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
 |    4 |  630 | `{` |
-|  622 |  631 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
+|  618 |  631 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
 |    4 |  632 | `}` |
 |    - |  633 | `/*` |
 |    - |  634 | ` * Send data on a socket.` |
 |    - |  635 | ` * Returns the number of bytes sent, or -1 on error.` |
 |    - |  636 | ` */` |
-|  109 |  637 | `PH7_PRIVATE int PH7_NetSend(ph7_socket sock, const void *pBuf, int nLen, int flags)` |
+|  107 |  637 | `PH7_PRIVATE int PH7_NetSend(ph7_socket sock, const void *pBuf, int nLen, int flags)` |
 |    4 |  638 | `{` |
-|  113 |  639 | `	return (int)send(sock, (const char *)pBuf, nLen, flags);` |
+|  111 |  639 | `	return (int)send(sock, (const char *)pBuf, nLen, flags);` |
 |    4 |  640 | `}` |
 |    - |  641 | `/*` |
 |    - |  642 | ` * Send all data on a socket, retrying on partial writes.` |
@@ -669,32 +669,32 @@ Coverage: 455/555 lines (81.98%)
 |    - |  659 | `/*` |
 |    - |  660 | ` * Close a socket.` |
 |    - |  661 | ` */` |
-|  955 |  662 | `PH7_PRIVATE void PH7_NetClose(ph7_socket sock)` |
+|  952 |  662 | `PH7_PRIVATE void PH7_NetClose(ph7_socket sock)` |
 |    5 |  663 | `{` |
-|  960 |  664 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
+|  957 |  664 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
 |   13 |  665 | `		return;` |
 |    - |  666 | `	}` |
 |    - |  667 | `#ifdef __WINNT__` |
 |    5 |  668 | `	closesocket(sock);` |
 |    - |  669 | `#else` |
-|  945 |  670 | `	close(sock);` |
+|  942 |  670 | `	close(sock);` |
 |    - |  671 | `#endif` |
-|  484 |  672 | `}` |
+|  481 |  672 | `}` |
 |    - |  673 | `/*` |
 |    - |  674 | ` * Set a receive timeout on a socket (in milliseconds).` |
 |    - |  675 | ` */` |
-|  637 |  676 | `PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock, int iMilliseconds)` |
+|  634 |  676 | `PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock, int iMilliseconds)` |
 |    4 |  677 | `{` |
 |    - |  678 | `#ifdef __WINNT__` |
 |    4 |  679 | `	DWORD tv = (DWORD)iMilliseconds;` |
 |    4 |  680 | `	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));` |
 |    - |  681 | `#else` |
 |    - |  682 | `	struct timeval tv;` |
-|  637 |  683 | `	tv.tv_sec = iMilliseconds / 1000;` |
-|  637 |  684 | `	tv.tv_usec = (iMilliseconds % 1000) * 1000;` |
-|  637 |  685 | `	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const void *)&tv, sizeof(tv));` |
+|  634 |  683 | `	tv.tv_sec = iMilliseconds / 1000;` |
+|  634 |  684 | `	tv.tv_usec = (iMilliseconds % 1000) * 1000;` |
+|  634 |  685 | `	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const void *)&tv, sizeof(tv));` |
 |    - |  686 | `#endif` |
-|  641 |  687 | `}` |
+|  638 |  687 | `}` |
 |    - |  688 | `/*` |
 |    - |  689 | ` * Set BOTH the receive and the send timeout, which is what php's` |
 |    - |  690 | ` * stream_set_timeout() means by "the timeout of this stream". A zero pair` |
@@ -764,18 +764,18 @@ Coverage: 455/555 lines (81.98%)
 |    - |  754 | ` * Extract a human-readable IP address string from a sockaddr.` |
 |    - |  755 | ` * Writes at most nBufLen bytes (including NUL) to zBuf.` |
 |    - |  756 | ` */` |
-|  187 |  757 | `PH7_PRIVATE void PH7_NetAddrToString(const struct sockaddr *pAddr, char *zBuf, int nBufLen)` |
+|  188 |  757 | `PH7_PRIVATE void PH7_NetAddrToString(const struct sockaddr *pAddr, char *zBuf, int nBufLen)` |
 |    4 |  758 | `{` |
-|  191 |  759 | `	if( nBufLen > 0 ){` |
-|  191 |  760 | `		zBuf[0] = 0;` |
-|   93 |  761 | `	}` |
-|  191 |  762 | `	if( pAddr == 0 \|\| nBufLen < 2 ){` |
+|  192 |  759 | `	if( nBufLen > 0 ){` |
+|  192 |  760 | `		zBuf[0] = 0;` |
+|   94 |  761 | `	}` |
+|  192 |  762 | `	if( pAddr == 0 \|\| nBufLen < 2 ){` |
 |  ! 0 |  763 | `		return;` |
 |    - |  764 | `	}` |
-|  191 |  765 | `	if( pAddr->sa_family == AF_INET ){` |
-|  118 |  766 | `		const struct sockaddr_in *pIn = (const struct sockaddr_in *)pAddr;` |
-|  118 |  767 | `		NetInetNtop(AF_INET, (const void *)&pIn->sin_addr, zBuf, nBufLen);` |
-|  118 |  768 | `		return;` |
+|  192 |  765 | `	if( pAddr->sa_family == AF_INET ){` |
+|  119 |  766 | `		const struct sockaddr_in *pIn = (const struct sockaddr_in *)pAddr;` |
+|  119 |  767 | `		NetInetNtop(AF_INET, (const void *)&pIn->sin_addr, zBuf, nBufLen);` |
+|  119 |  768 | `		return;` |
 |    - |  769 | `	}` |
 |   74 |  770 | `	if( pAddr->sa_family == AF_INET6 ){` |
 |   65 |  771 | `		const struct sockaddr_in6 *pIn6 = (const struct sockaddr_in6 *)pAddr;` |
@@ -783,50 +783,50 @@ Coverage: 455/555 lines (81.98%)
 |   64 |  773 | `		return;` |
 |    - |  774 | `	}` |
 |    - |  775 | `	/* A socketpair, or anything else with no address of its own. */` |
-|   97 |  776 | `}` |
+|   98 |  776 | `}` |
 |    - |  777 | `/*` |
 |    - |  778 | ` * Extract the port number from a sockaddr (in host byte order).` |
 |    - |  779 | ` */` |
-|  179 |  780 | `PH7_PRIVATE int PH7_NetAddrPort(const struct sockaddr *pAddr)` |
+|  180 |  780 | `PH7_PRIVATE int PH7_NetAddrPort(const struct sockaddr *pAddr)` |
 |    4 |  781 | `{` |
-|  183 |  782 | `	if( pAddr == 0 ){` |
+|  184 |  782 | `	if( pAddr == 0 ){` |
 |  ! 0 |  783 | `		return 0;` |
 |    - |  784 | `	}` |
-|  183 |  785 | `	if( pAddr->sa_family == AF_INET ){` |
-|  118 |  786 | `		return (int)ntohs(((const struct sockaddr_in *)pAddr)->sin_port);` |
+|  184 |  785 | `	if( pAddr->sa_family == AF_INET ){` |
+|  119 |  786 | `		return (int)ntohs(((const struct sockaddr_in *)pAddr)->sin_port);` |
 |    - |  787 | `	}` |
 |   65 |  788 | `	if( pAddr->sa_family == AF_INET6 ){` |
 |   65 |  789 | `		return (int)ntohs(((const struct sockaddr_in6 *)pAddr)->sin6_port);` |
 |    - |  790 | `	}` |
 |  ! 0 |  791 | `	return 0;` |
-|   93 |  792 | `}` |
+|   94 |  792 | `}` |
 |    - |  793 | `/*` |
 |    - |  794 | `` * One sockaddr as php's stream_socket_get_name() spells it: `ip:port` for IPv4`` |
 |    - |  795 | `` * and `[ip]:port` for IPv6 -- the BRACKETED form, which is the same spelling`` |
 |    - |  796 | ` * every address argument in the family reads back. Answers 0 when the address` |
 |    - |  797 | `` * has no name at all (a socketpair), which is php's `false`.`` |
 |    - |  798 | ` */` |
-|  135 |  799 | `static int NetFormatAddr(const struct sockaddr *pAddr, char *zBuf, int nBuf)` |
+|  136 |  799 | `static int NetFormatAddr(const struct sockaddr *pAddr, char *zBuf, int nBuf)` |
 |    4 |  800 | `{` |
 |    - |  801 | `	char zIp[80];` |
 |    - |  802 | `	int n;` |
-|  139 |  803 | `	if( zBuf == 0 \|\| nBuf < 2 ){` |
+|  140 |  803 | `	if( zBuf == 0 \|\| nBuf < 2 ){` |
 |  ! 0 |  804 | `		return 0;` |
 |    - |  805 | `	}` |
-|  139 |  806 | `	zBuf[0] = 0;` |
-|  139 |  807 | `	PH7_NetAddrToString(pAddr, zIp, (int)sizeof(zIp));` |
-|  139 |  808 | `	if( zIp[0] == 0 ){` |
+|  140 |  806 | `	zBuf[0] = 0;` |
+|  140 |  807 | `	PH7_NetAddrToString(pAddr, zIp, (int)sizeof(zIp));` |
+|  140 |  808 | `	if( zIp[0] == 0 ){` |
 |    9 |  809 | `		return 0;` |
 |    - |  810 | `	}` |
-|  195 |  811 | `	n = pAddr->sa_family == AF_INET6` |
+|  196 |  811 | `	n = pAddr->sa_family == AF_INET6` |
 |   16 |  812 | `		? snprintf(zBuf, (size_t)nBuf, "[%s]:%d", zIp, PH7_NetAddrPort(pAddr))` |
-|  119 |  813 | `		: snprintf(zBuf, (size_t)nBuf, "%s:%d", zIp, PH7_NetAddrPort(pAddr));` |
-|  131 |  814 | `	if( n <= 0 \|\| n >= nBuf ){` |
+|  120 |  813 | `		: snprintf(zBuf, (size_t)nBuf, "%s:%d", zIp, PH7_NetAddrPort(pAddr));` |
+|  132 |  814 | `	if( n <= 0 \|\| n >= nBuf ){` |
 |  ! 0 |  815 | `		zBuf[0] = 0;` |
 |  ! 0 |  816 | `		return 0;` |
 |    - |  817 | `	}` |
-|  131 |  818 | `	return 1;` |
-|   71 |  819 | `}` |
+|  132 |  818 | `	return 1;` |
+|   72 |  819 | `}` |
 |    - |  820 |  |
 |    - |  821 | `/*` |
 |    - |  822 | ` * The PLATFORM numbers php's socket constants carry, which is why they cannot` |
@@ -834,26 +834,26 @@ Coverage: 455/555 lines (81.98%)
 |    - |  824 | ` * and 30 on the BSDs, and a program that hands one of them to` |
 |    - |  825 | ` * stream_socket_pair() is handing the OS its own value.` |
 |    - |  826 | ` */` |
-|  933 |  827 | `PH7_PRIVATE ph7_int64 PH7_NetSocketConst(int iWhich)` |
-|    4 |  828 | `{` |
-|  937 |  829 | `	switch( iWhich ){` |
-|   75 |  830 | `	case PH7_NETC_PF_INET:      return AF_INET;` |
-|   74 |  831 | `	case PH7_NETC_PF_INET6:     return AF_INET6;` |
-|   81 |  832 | `	case PH7_NETC_PF_UNIX:      return AF_UNIX;` |
-|   79 |  833 | `	case PH7_NETC_SOCK_STREAM:  return SOCK_STREAM;` |
-|   74 |  834 | `	case PH7_NETC_SOCK_DGRAM:   return SOCK_DGRAM;` |
-|   74 |  835 | `	case PH7_NETC_SOCK_RAW:     return SOCK_RAW;` |
-|   74 |  836 | `	case PH7_NETC_SOCK_SEQPACKET: return SOCK_SEQPACKET;` |
-|   74 |  837 | `	case PH7_NETC_SOCK_RDM:     return SOCK_RDM;` |
-|   75 |  838 | `	case PH7_NETC_IPPROTO_IP:   return IPPROTO_IP;` |
-|   74 |  839 | `	case PH7_NETC_IPPROTO_TCP:  return IPPROTO_TCP;` |
-|   74 |  840 | `	case PH7_NETC_IPPROTO_UDP:  return IPPROTO_UDP;` |
-|   74 |  841 | `	case PH7_NETC_IPPROTO_ICMP: return IPPROTO_ICMP;` |
-|   74 |  842 | `	case PH7_NETC_IPPROTO_RAW:  return IPPROTO_RAW;` |
+| 1063 |  827 | `PH7_PRIVATE ph7_int64 PH7_NetSocketConst(int iWhich)` |
+|    5 |  828 | `{` |
+| 1068 |  829 | `	switch( iWhich ){` |
+|   86 |  830 | `	case PH7_NETC_PF_INET:      return AF_INET;` |
+|   86 |  831 | `	case PH7_NETC_PF_INET6:     return AF_INET6;` |
+|   92 |  832 | `	case PH7_NETC_PF_UNIX:      return AF_UNIX;` |
+|   90 |  833 | `	case PH7_NETC_SOCK_STREAM:  return SOCK_STREAM;` |
+|   86 |  834 | `	case PH7_NETC_SOCK_DGRAM:   return SOCK_DGRAM;` |
+|   86 |  835 | `	case PH7_NETC_SOCK_RAW:     return SOCK_RAW;` |
+|   86 |  836 | `	case PH7_NETC_SOCK_SEQPACKET: return SOCK_SEQPACKET;` |
+|   86 |  837 | `	case PH7_NETC_SOCK_RDM:     return SOCK_RDM;` |
+|   86 |  838 | `	case PH7_NETC_IPPROTO_IP:   return IPPROTO_IP;` |
+|   86 |  839 | `	case PH7_NETC_IPPROTO_TCP:  return IPPROTO_TCP;` |
+|   86 |  840 | `	case PH7_NETC_IPPROTO_UDP:  return IPPROTO_UDP;` |
+|   86 |  841 | `	case PH7_NETC_IPPROTO_ICMP: return IPPROTO_ICMP;` |
+|   86 |  842 | `	case PH7_NETC_IPPROTO_RAW:  return IPPROTO_RAW;` |
 |  ! 0 |  843 | `	default: break;` |
 |    - |  844 | `	}` |
 |  ! 0 |  845 | `	return 0;` |
-|  464 |  846 | `}` |
+|  530 |  846 | `}` |
 |    - |  847 | `/*` |
 |    - |  848 | ` * shutdown(), which is how a program says "I am done SENDING" without closing` |
 |    - |  849 | ` * the handle it still wants to read — the half-close every line protocol ends` |
@@ -907,25 +907,25 @@ Coverage: 455/555 lines (81.98%)
 |    - |  897 | ` * single read; PHL reported false until a read came back empty, so a` |
 |    - |  898 | `` * `while (!feof($sock))` loop written php's way ran one turn too many.`` |
 |    - |  899 | ` */` |
-|   97 |  900 | `PH7_PRIVATE int PH7_NetIsAlive(ph7_socket sock)` |
+|   96 |  900 | `PH7_PRIVATE int PH7_NetIsAlive(ph7_socket sock)` |
 |    3 |  901 | `{` |
 |    - |  902 | `	char c;` |
-|  100 |  903 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
+|   99 |  903 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
 |  ! 0 |  904 | `		return 0;` |
 |    - |  905 | `	}` |
-|  100 |  906 | `	if( PH7_NetWait(sock,0,0) <= 0 ){` |
+|   99 |  906 | `	if( PH7_NetWait(sock,0,0) <= 0 ){` |
 |    - |  907 | `		/* Not readable, or the wait itself failed: neither is evidence of an` |
 |    - |  908 | `		 * end, and php only looks further when the poll says there is` |
 |    - |  909 | `		 * something to look at. */` |
-|   71 |  910 | `		return 1;` |
+|   66 |  910 | `		return 1;` |
 |    - |  911 | `	}` |
 |    - |  912 | `#ifndef __WINNT__` |
-|   28 |  913 | `	errno = 0; /* so a STALE EAGAIN cannot answer for this call's recv() */` |
+|   32 |  913 | `	errno = 0; /* so a STALE EAGAIN cannot answer for this call's recv() */` |
 |    - |  914 | `#endif` |
-|   30 |  915 | `	if( recv(sock,&c,1,MSG_PEEK) > 0 ){` |
-|    7 |  916 | `		return 1;` |
+|   34 |  915 | `	if( recv(sock,&c,1,MSG_PEEK) > 0 ){` |
+|    6 |  916 | `		return 1;` |
 |    - |  917 | `	}` |
-|   24 |  918 | `	return PH7_NetWouldBlock() ? 1 : 0;` |
+|   29 |  918 | `	return PH7_NetWouldBlock() ? 1 : 0;` |
 |   51 |  919 | `}` |
 |    - |  920 | `/* php's STREAM_OOB/STREAM_PEEK are php's own bits, not the OS's. */` |
 |   40 |  921 | `static int NetMsgFlags(int iFlags)` |

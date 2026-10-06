@@ -34,7 +34,7 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |   24 | ` * Given a string containing the path of a file or directory, this function` |
 |      - |   25 | ` * return the parent directory's path.` |
 |      - |   26 | ` */` |
-|  20180 |   27 | `PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen)` |
+|  21368 |   27 | `PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen)` |
 |      5 |   28 | `{` |
 |      - |   29 | `	/* php_dirname: strip any trailing separators, cut at the last remaining one,` |
 |      - |   30 | `	 * then strip trailing separators off the parent too. The previous version` |
@@ -46,80 +46,80 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |   36 | `#ifdef __WINNT__` |
 |      5 |   37 | `	const char *zRoot = "\\";` |
 |      - |   38 | `#else` |
-|  20180 |   39 | `	const char *zRoot = "/";` |
+|  21368 |   39 | `	const char *zRoot = "/";` |
 |      - |   40 | `#endif` |
-|  20185 |   41 | `	c = d = '/';` |
+|  21373 |   41 | `	c = d = '/';` |
 |      - |   42 | `#ifdef __WINNT__` |
 |      5 |   43 | `	d = '\\';` |
 |      - |   44 | `#endif` |
 |      - |   45 | `#define DIR_IS_SEP(x) ( (int)(x) == c \|\| (int)(x) == d )` |
-|  20185 |   46 | `	if( nByte < 1 ){` |
+|  21373 |   46 | `	if( nByte < 1 ){` |
 |      - |   47 | `		/* php returns the empty string for the empty path */` |
 |      5 |   48 | `		*pLen = 0;` |
 |      5 |   49 | `		return "";` |
 |      - |   50 | `	}` |
-|  20181 |   51 | `	iEnd = nByte;` |
-|  30297 |   52 | `	while( iEnd > 0 && DIR_IS_SEP(zPath[iEnd - 1]) ){` |
+|  21369 |   51 | `	iEnd = nByte;` |
+|  32079 |   52 | `	while( iEnd > 0 && DIR_IS_SEP(zPath[iEnd - 1]) ){` |
 |     29 |   53 | `		iEnd--;` |
 |      1 |   54 | `	}` |
-|  20181 |   55 | `	if( iEnd == 0 ){` |
+|  21369 |   55 | `	if( iEnd == 0 ){` |
 |      - |   56 | `		/* The path is nothing but separators: the root is its own parent */` |
 |     17 |   57 | `		*pLen = (int)sizeof(char);` |
 |     17 |   58 | `		return zRoot;` |
 |      - |   59 | `	}` |
 |      - |   60 | `	/* Walk back to the separator that ends the parent directory */` |
-|  20165 |   61 | `	i = iEnd;` |
-| 555525 |   62 | `	while( i > 0 && !DIR_IS_SEP(zPath[i - 1]) ){` |
-| 535365 |   63 | `		i--;` |
+|  21353 |   61 | `	i = iEnd;` |
+| 598691 |   62 | `	while( i > 0 && !DIR_IS_SEP(zPath[i - 1]) ){` |
+| 577343 |   63 | `		i--;` |
 |      5 |   64 | `	}` |
-|  20165 |   65 | `	if( i == 0 ){` |
+|  21353 |   65 | `	if( i == 0 ){` |
 |      - |   66 | `		/* No separator at all,return "." as the current directory */` |
 |     70 |   67 | `		*pLen = (int)sizeof(char);` |
 |     70 |   68 | `		return ".";` |
 |      - |   69 | `	}` |
 |      - |   70 | `	/* Drop the separator, plus any that repeat before it */` |
-|  50225 |   71 | `	while( i > 1 && DIR_IS_SEP(zPath[i - 1]) ){` |
-|  20087 |   72 | `		i--;` |
+|  53195 |   71 | `	while( i > 1 && DIR_IS_SEP(zPath[i - 1]) ){` |
+|  21275 |   72 | `		i--;` |
 |      5 |   73 | `	}` |
-|  20097 |   74 | `	if( i == 1 && DIR_IS_SEP(zPath[0]) ){` |
+|  21285 |   74 | `	if( i == 1 && DIR_IS_SEP(zPath[0]) ){` |
 |     13 |   75 | `		*pLen = (int)sizeof(char);` |
 |     13 |   76 | `		return zRoot;` |
 |      - |   77 | `	}` |
-|  20085 |   78 | `	*pLen = i;` |
-|  20085 |   79 | `	return zPath;` |
+|  21273 |   78 | `	*pLen = i;` |
+|  21273 |   79 | `	return zPath;` |
 |      - |   80 | `#undef DIR_IS_SEP` |
-|  10095 |   81 | `}` |
+|  10689 |   81 | `}` |
 |      - |   82 | `/*` |
 |      - |   83 | ` * php_basename: drop any trailing separators, then answer what follows the last` |
 |      - |   84 | ` * remaining one. Shared by basename() and pathinfo() — they used to hand-roll the` |
 |      - |   85 | ` * same walk separately, and pathinfo()'s copy kept the trailing separator run` |
 |      - |   86 | `` * (`pathinfo("/var/www/")` answered basename "" where php answers "www").`` |
 |      - |   87 | ` */` |
-|  19966 |   88 | `PH7_PRIVATE const char * PH7_ExtractBaseName(const char *zPath,int nByte,int *pLen)` |
+|  21238 |   88 | `PH7_PRIVATE const char * PH7_ExtractBaseName(const char *zPath,int nByte,int *pLen)` |
 |      5 |   89 | `{` |
 |      - |   90 | `	int c,d,iEnd,i;` |
-|  19971 |   91 | `	c = d = '/';` |
+|  21243 |   91 | `	c = d = '/';` |
 |      - |   92 | `#ifdef __WINNT__` |
 |      5 |   93 | `	d = '\\';` |
 |      - |   94 | `#endif` |
 |      - |   95 | `#define DIR_IS_SEP(x) ( (int)(x) == c \|\| (int)(x) == d )` |
-|  19971 |   96 | `	iEnd = nByte;` |
-|  29979 |   97 | `	while( iEnd > 0 && DIR_IS_SEP(zPath[iEnd - 1]) ){` |
+|  21243 |   96 | `	iEnd = nByte;` |
+|  31887 |   97 | `	while( iEnd > 0 && DIR_IS_SEP(zPath[iEnd - 1]) ){` |
 |     27 |   98 | `		iEnd--;` |
 |      1 |   99 | `	}` |
-|  19971 |  100 | `	if( iEnd < 1 ){` |
+|  21243 |  100 | `	if( iEnd < 1 ){` |
 |      - |  101 | `		/* Empty, or nothing but separators: php answers the empty string */` |
 |     29 |  102 | `		*pLen = 0;` |
 |     29 |  103 | `		return "";` |
 |      - |  104 | `	}` |
-|  19943 |  105 | `	i = iEnd;` |
-| 548392 |  106 | `	while( i > 0 && !DIR_IS_SEP(zPath[i - 1]) ){` |
-| 528454 |  107 | `		i--;` |
+|  21215 |  105 | `	i = iEnd;` |
+| 595616 |  106 | `	while( i > 0 && !DIR_IS_SEP(zPath[i - 1]) ){` |
+| 574406 |  107 | `		i--;` |
 |      5 |  108 | `	}` |
-|  19943 |  109 | `	*pLen = iEnd - i;` |
-|  19943 |  110 | `	return &zPath[i];` |
+|  21215 |  109 | `	*pLen = iEnd - i;` |
+|  21215 |  110 | `	return &zPath[i];` |
 |      - |  111 | `#undef DIR_IS_SEP` |
-|   9988 |  112 | `}` |
+|  10624 |  112 | `}` |
 |      - |  113 | `/*` |
 |      - |  114 | `` * php's `ValueError: Path must not be empty`, raised by its STREAM LAYER before`` |
 |      - |  115 | ` * anything is looked up -- so every door that opens one gets it, unqualified by` |
@@ -133,36 +133,36 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  123 | ` *` |
 |      - |  124 | ` * Answers 1 once the exception is raised, which is the caller's cue to return.` |
 |      - |  125 | ` */` |
-|  44950 |  126 | `PH7_PRIVATE int PH7_VfsEmptyPathRefused(ph7_context *pCtx,int nPath)` |
+|  46968 |  126 | `PH7_PRIVATE int PH7_VfsEmptyPathRefused(ph7_context *pCtx,int nPath)` |
 |      5 |  127 | `{` |
-|  44955 |  128 | `	if( nPath > 0 ){` |
-|  44925 |  129 | `		return 0;` |
+|  46973 |  128 | `	if( nPath > 0 ){` |
+|  46943 |  129 | `		return 0;` |
 |      - |  130 | `	}` |
 |     31 |  131 | `	PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");` |
 |     31 |  132 | `	return 1;` |
-|  22443 |  133 | `}` |
+|  23452 |  133 | `}` |
 |      - |  134 | `/*` |
 |      - |  135 | ` * Is this path already anchored -- a leading slash, or a drive prefix on` |
 |      - |  136 | ` * Windows? Everything else resolves against the working directory.` |
 |      - |  137 | ` */` |
 |    400 |  138 | `PH7_PRIVATE int PH7_VfsPathIsAbsolute(const char *zPath,int nPath)` |
-|      4 |  139 | `{` |
-|    404 |  140 | `	if( nPath < 1 ){` |
+|      5 |  139 | `{` |
+|    405 |  140 | `	if( nPath < 1 ){` |
 |    ! 0 |  141 | `		return 0;` |
 |      - |  142 | `	}` |
-|    404 |  143 | `	if( zPath[0] == '/' ){` |
+|    405 |  143 | `	if( zPath[0] == '/' ){` |
 |    383 |  144 | `		return 1;` |
 |      - |  145 | `	}` |
 |      - |  146 | `#ifdef __WINNT__` |
-|      3 |  147 | `	if( zPath[0] == '\\' ){` |
+|      4 |  147 | `	if( zPath[0] == '\\' ){` |
 |    ! 0 |  148 | `		return 1;` |
 |      - |  149 | `	}` |
-|      3 |  150 | `	if( nPath > 2 && zPath[1] == ':' && (zPath[2] == '/' \|\| zPath[2] == '\\') ){` |
-|      3 |  151 | `		return 1;` |
+|      4 |  150 | `	if( nPath > 2 && zPath[1] == ':' && (zPath[2] == '/' \|\| zPath[2] == '\\') ){` |
+|      4 |  151 | `		return 1;` |
 |      - |  152 | `	}` |
 |      - |  153 | `#endif` |
 |     19 |  154 | `	return 0;` |
-|    204 |  155 | `}` |
+|    205 |  155 | `}` |
 |      - |  156 | `/*` |
 |      - |  157 | `` * php's `expand_filepath()`: the absolute form of a name, built without asking`` |
 |      - |  158 | ` * the filesystem anything. Two extensions run every filename they are given` |
@@ -179,13 +179,13 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  169 | ` * length-carrying blob and a C string.` |
 |      - |  170 | ` */` |
 |    400 |  171 | `PH7_PRIVATE void PH7_VfsExpandPath(ph7_context *pCtx,const char *zPath,int nPath,SyBlob *pOut)` |
-|      4 |  172 | `{` |
+|      5 |  172 | `{` |
 |      - |  173 | `	SyBlob sRaw;` |
 |      - |  174 | `	const char *z;` |
 |      - |  175 | `	sxu32 n,nRoot,nRaw;` |
-|    404 |  176 | `	SyBlobInit(pOut,&pCtx->pVm->sAllocator);` |
-|    404 |  177 | `	SyBlobInit(&sRaw,&pCtx->pVm->sAllocator);` |
-|    404 |  178 | `	if( !PH7_VfsPathIsAbsolute(zPath,nPath) ){` |
+|    405 |  176 | `	SyBlobInit(pOut,&pCtx->pVm->sAllocator);` |
+|    405 |  177 | `	SyBlobInit(&sRaw,&pCtx->pVm->sAllocator);` |
+|    405 |  178 | `	if( !PH7_VfsPathIsAbsolute(zPath,nPath) ){` |
 |      - |  179 | `		/* the VFS answers through the context's RESULT slot, which the caller` |
 |      - |  180 | `		 * overwrites with its own return value afterwards */` |
 |     19 |  181 | `		const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;` |
@@ -198,37 +198,37 @@ Coverage: 1948/2421 lines (80.46%)
 |     19 |  188 | `		PH7_MemObjRelease(pCtx->pRet);` |
 |     19 |  189 | `		SyBlobAppend(&sRaw,PH7_PATH_SEP_STR,sizeof(PH7_PATH_SEP_STR)-1);` |
 |      9 |  190 | `	}` |
-|    404 |  191 | `	if( nPath > 0 ){` |
-|    404 |  192 | `		SyBlobAppend(&sRaw,zPath,(sxu32)nPath);` |
+|    405 |  191 | `	if( nPath > 0 ){` |
+|    405 |  192 | `		SyBlobAppend(&sRaw,zPath,(sxu32)nPath);` |
 |    200 |  193 | `	}` |
 |      - |  194 | `	/* Keep the root -- a leading slash, or a drive prefix -- and rebuild the` |
 |      - |  195 | `	 * rest segment by segment. */` |
-|    404 |  196 | `	z = (const char *)SyBlobData(&sRaw);` |
-|    404 |  197 | `	nRaw = SyBlobLength(&sRaw);` |
-|    404 |  198 | `	nRoot = 0;` |
+|    405 |  196 | `	z = (const char *)SyBlobData(&sRaw);` |
+|    405 |  197 | `	nRaw = SyBlobLength(&sRaw);` |
+|    405 |  198 | `	nRoot = 0;` |
 |      - |  199 | `#ifdef __WINNT__` |
-|      4 |  200 | `	if( nRaw > 1 && z[1] == ':' ){` |
-|      3 |  201 | `		nRoot = 2;` |
+|      5 |  200 | `	if( nRaw > 1 && z[1] == ':' ){` |
+|      4 |  201 | `		nRoot = 2;` |
 |      - |  202 | `	}` |
 |      - |  203 | `#endif` |
-|    404 |  204 | `	if( nRoot < nRaw && (z[nRoot] == '/' \|\| z[nRoot] == '\\') ){` |
-|    404 |  205 | `		++nRoot;` |
+|    405 |  204 | `	if( nRoot < nRaw && (z[nRoot] == '/' \|\| z[nRoot] == '\\') ){` |
+|    405 |  205 | `		++nRoot;` |
 |    200 |  206 | `	}` |
-|    404 |  207 | `	SyBlobAppend(pOut,z,nRoot);` |
-|   2419 |  208 | `	for( n = nRoot ; n < nRaw ; ){` |
-|   2019 |  209 | `		sxu32 nStart = n;` |
+|    405 |  207 | `	SyBlobAppend(pOut,z,nRoot);` |
+|   2420 |  208 | `	for( n = nRoot ; n < nRaw ; ){` |
+|   2020 |  209 | `		sxu32 nStart = n;` |
 |      - |  210 | `		sxu32 nSeg;` |
-|  18857 |  211 | `		while( n < nRaw && z[n] != '/' && z[n] != '\\' ){` |
-|  16842 |  212 | `			++n;` |
-|      4 |  213 | `		}` |
-|   2019 |  214 | `		nSeg = n - nStart;` |
-|   2019 |  215 | `		if( n < nRaw ){` |
-|   1619 |  216 | `			++n;   /* step past the separator */` |
+|  18858 |  211 | `		while( n < nRaw && z[n] != '/' && z[n] != '\\' ){` |
+|  16843 |  212 | `			++n;` |
+|      5 |  213 | `		}` |
+|   2020 |  214 | `		nSeg = n - nStart;` |
+|   2020 |  215 | `		if( n < nRaw ){` |
+|   1620 |  216 | `			++n;   /* step past the separator */` |
 |   1210 |  217 | `		}` |
-|   2019 |  218 | `		if( nSeg == 0 \|\| (nSeg == 1 && z[nStart] == '.') ){` |
+|   2020 |  218 | `		if( nSeg == 0 \|\| (nSeg == 1 && z[nStart] == '.') ){` |
 |      3 |  219 | ``			continue;   /* `//` and `.` name the directory they stand in */`` |
 |      - |  220 | `		}` |
-|   2017 |  221 | `		if( nSeg == 2 && z[nStart] == '.' && z[nStart+1] == '.' ){` |
+|   2018 |  221 | `		if( nSeg == 2 && z[nStart] == '.' && z[nStart+1] == '.' ){` |
 |      - |  222 | ``			/* pop the previous segment; `..` above the root is the root */`` |
 |      5 |  223 | `			sxu32 nHave = SyBlobLength(pOut);` |
 |     17 |  224 | `			while( nHave > nRoot && ((char *)SyBlobData(pOut))[nHave-1] != PH7_PATH_SEP ){` |
@@ -240,18 +240,18 @@ Coverage: 1948/2421 lines (80.46%)
 |      5 |  230 | `			pOut->nByte = nHave;   /* the blob has no truncate of its own */` |
 |      5 |  231 | `			continue;` |
 |      - |  232 | `		}` |
-|   2013 |  233 | `		if( SyBlobLength(pOut) > nRoot ){` |
+|   2014 |  233 | `		if( SyBlobLength(pOut) > nRoot ){` |
 |      - |  234 | `			/* php's expansion writes the PLATFORM's separator, which is what a` |
 |      - |  235 | ``			 * name it hands back reads as: ext/zip's `filename` property is the`` |
 |      - |  236 | `			 * one surface that shows it, and a Windows one there is spelled` |
 |      - |  237 | `			 * with backslashes exactly as php spells it. */` |
-|   1613 |  238 | `			SyBlobAppend(pOut,PH7_PATH_SEP_STR,sizeof(PH7_PATH_SEP_STR)-1);` |
+|   1614 |  238 | `			SyBlobAppend(pOut,PH7_PATH_SEP_STR,sizeof(PH7_PATH_SEP_STR)-1);` |
 |   1207 |  239 | `		}` |
-|   2013 |  240 | `		SyBlobAppend(pOut,&z[nStart],nSeg);` |
-|      4 |  241 | `	}` |
-|    404 |  242 | `	SyBlobRelease(&sRaw);` |
-|    404 |  243 | `	SyBlobNullAppend(pOut);` |
-|    404 |  244 | `}` |
+|   2014 |  240 | `		SyBlobAppend(pOut,&z[nStart],nSeg);` |
+|      5 |  241 | `	}` |
+|    405 |  242 | `	SyBlobRelease(&sRaw);` |
+|    405 |  243 | `	SyBlobNullAppend(pOut);` |
+|    405 |  244 | `}` |
 |      - |  245 | `/*` |
 |      - |  246 | ` * Compile the VFS implementations when builtins are enabled OR when disk I/O` |
 |      - |  247 | ` * is explicitly enabled (i.e. PH7_DISABLE_DISK_IO is NOT defined).` |
@@ -263,13 +263,13 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  253 | ` * once with the deprecation suppressed. The pragma is _MSC_VER-guarded so the` |
 |      - |  254 | ` * GCC/-Werror Linux build never sees an unknown-pragma warning.` |
 |      - |  255 | ` */` |
-|  31510 |  256 | `PH7_PRIVATE const char * VfsStrerror(int iErr)` |
+|  33832 |  256 | `PH7_PRIVATE const char * VfsStrerror(int iErr)` |
 |      5 |  257 | `{` |
 |      - |  258 | `#if defined(_MSC_VER)` |
 |      - |  259 | `#pragma warning(push)` |
 |      - |  260 | `#pragma warning(disable:4996)` |
 |      - |  261 | `#endif` |
-|  31515 |  262 | `	return strerror(iErr);` |
+|  33837 |  262 | `	return strerror(iErr);` |
 |      - |  263 | `#if defined(_MSC_VER)` |
 |      - |  264 | `#pragma warning(pop)` |
 |      - |  265 | `#endif` |
@@ -280,11 +280,11 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  270 | ` * filesize, so a script could not tell a failed operation from a successful one without` |
 |      - |  271 | ` * checking the return value it never got told to check.` |
 |      - |  272 | ` */` |
-|  31234 |  273 | `static void VfsThrowSysWarning(ph7_context *pCtx,const char *zPath)` |
+|  33554 |  273 | `static void VfsThrowSysWarning(ph7_context *pCtx,const char *zPath)` |
 |      5 |  274 | `{` |
-|  46854 |  275 | `	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s",` |
-|  31234 |  276 | `		ph7_function_name(pCtx),zPath ? zPath : "",VfsStrerror(errno));` |
-|  31239 |  277 | `}` |
+|  50334 |  275 | `	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s",` |
+|  33554 |  276 | `		ph7_function_name(pCtx),zPath ? zPath : "",VfsStrerror(errno));` |
+|  33559 |  277 | `}` |
 |      - |  278 | `/*` |
 |      - |  279 | ` * php's "fopen(data://x): Failed to open stream: rfc2397: no comma in URL".` |
 |      - |  280 | ` *` |
@@ -309,30 +309,30 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  299 | ` * all report ENOTDIR under php, and it is only what a script reads after` |
 |      - |  300 | `` * `Failed to open stream:` that changes.`` |
 |      - |  301 | ` */` |
-|    134 |  302 | `PH7_PRIVATE const char * PH7_VfsOpenStrerror(int iErr)` |
+|    136 |  302 | `PH7_PRIVATE const char * PH7_VfsOpenStrerror(int iErr)` |
 |      5 |  303 | `{` |
 |      - |  304 | `#ifdef ENOTDIR` |
-|    139 |  305 | `	if( iErr == ENOTDIR ){` |
+|    141 |  305 | `	if( iErr == ENOTDIR ){` |
 |      2 |  306 | `		iErr = ENOENT;` |
 |      1 |  307 | `	}` |
 |      - |  308 | `#endif` |
-|    139 |  309 | `	return VfsStrerror(iErr);` |
+|    141 |  309 | `	return VfsStrerror(iErr);` |
 |      5 |  310 | `}` |
-|    292 |  311 | `PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)` |
+|    294 |  311 | `PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)` |
 |      5 |  312 | `{` |
-|    297 |  313 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    297 |  314 | `	const char *zName = zFile ? zFile : "";` |
+|    299 |  313 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    299 |  314 | `	const char *zName = zFile ? zFile : "";` |
 |      - |  315 | `	char zFn[64];` |
-|    297 |  316 | `	int nName = -1;` |
-|    297 |  317 | `	if( zFile != 0 && zFile == pVm->zOpenUriTail && pVm->zOpenUri != 0 ){` |
+|    299 |  316 | `	int nName = -1;` |
+|    299 |  317 | `	if( zFile != 0 && zFile == pVm->zOpenUriTail && pVm->zOpenUri != 0 ){` |
 |    190 |  318 | `		zName = pVm->zOpenUri;` |
 |    190 |  319 | `		nName = pVm->nOpenUri;` |
 |     92 |  320 | `	}` |
-|    495 |  321 | `	PH7_VmThrowWarningFmt(pVm,"%s(%.*s): Failed to open stream: %s",` |
-|    145 |  322 | `		PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),` |
-|    198 |  323 | `		nName < 0 ? (int)SyStrlen(zName) : nName,zName,` |
-|    292 |  324 | `		pVm->zOpenErr ? pVm->zOpenErr : PH7_VfsOpenStrerror(errno));` |
-|    297 |  325 | `}` |
+|    499 |  321 | `	PH7_VmThrowWarningFmt(pVm,"%s(%.*s): Failed to open stream: %s",` |
+|    146 |  322 | `		PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),` |
+|    200 |  323 | `		nName < 0 ? (int)SyStrlen(zName) : nName,zName,` |
+|    294 |  324 | `		pVm->zOpenErr ? pVm->zOpenErr : PH7_VfsOpenStrerror(errno));` |
+|    299 |  325 | `}` |
 |      - |  326 | `/*` |
 |      - |  327 | ` * php's answer when NO wrapper will take a name is a reason of its own, raised` |
 |      - |  328 | ` * before the operation's own failure and naming the scheme the script wrote:` |
@@ -432,29 +432,29 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  422 | ` * scheme some wrapper answered for, and left at the WHOLE uri when the fallback` |
 |      - |  423 | ` * takes it, which is the string the plain-files wrapper is meant to see.` |
 |      - |  424 | ` */` |
-|  62119 |  425 | `PH7_PRIVATE const ph7_io_stream * PH7_VfsStreamDeviceOrFile(` |
+|  65464 |  425 | `PH7_PRIVATE const ph7_io_stream * PH7_VfsStreamDeviceOrFile(` |
 |      - |  426 | `	ph7_context *pCtx,     /* Call context, for the warning's function name */` |
 |      - |  427 | `	const char **pzUri,    /* IN: full uri. OUT: what the wrapper is handed */` |
 |      - |  428 | `	int nByte              /* *pzUri length */` |
 |      - |  429 | `	)` |
 |      5 |  430 | `{` |
-|  62124 |  431 | `	const char *zUri = *pzUri;` |
+|  65469 |  431 | `	const char *zUri = *pzUri;` |
 |      - |  432 | `	const ph7_io_stream *pStream;` |
-|  62124 |  433 | `	int nScheme = 0;` |
-|  62124 |  434 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,pzUri,nByte);` |
-|  62124 |  435 | `	if( pStream != 0 ){` |
-|  62036 |  436 | `		return pStream;` |
+|  65469 |  433 | `	int nScheme = 0;` |
+|  65469 |  434 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,pzUri,nByte);` |
+|  65469 |  435 | `	if( pStream != 0 ){` |
+|  65381 |  436 | `		return pStream;` |
 |      - |  437 | `	}` |
-|     91 |  438 | `	if( PH7_VmStreamDeviceIsRemoteHost(zUri,nByte,&nScheme) \|\| nScheme < 1 ){` |
+|     92 |  438 | `	if( PH7_VmStreamDeviceIsRemoteHost(zUri,nByte,&nScheme) \|\| nScheme < 1 ){` |
 |     18 |  439 | `		return 0;` |
 |      - |  440 | `	}` |
-|     75 |  441 | `	if( PH7_VmStreamSchemeDisabled(pCtx->pVm,"file",(int)sizeof("file")-1) ){` |
+|     76 |  441 | `	if( PH7_VmStreamSchemeDisabled(pCtx->pVm,"file",(int)sizeof("file")-1) ){` |
 |    ! 0 |  442 | `		return 0;` |
 |      - |  443 | `	}` |
-|     75 |  444 | `	VfsThrowUnknownWrapperWarning(pCtx,zUri);` |
-|     75 |  445 | `	*pzUri = zUri;` |
-|     75 |  446 | `	return PH7_VmFindStreamDevice(pCtx->pVm,"file",(int)sizeof("file")-1);` |
-|  31010 |  447 | `}` |
+|     76 |  444 | `	VfsThrowUnknownWrapperWarning(pCtx,zUri);` |
+|     76 |  445 | `	*pzUri = zUri;` |
+|     76 |  446 | `	return PH7_VmFindStreamDevice(pCtx->pVm,"file",(int)sizeof("file")-1);` |
+|  32684 |  447 | `}` |
 |      - |  448 | `/*` |
 |      - |  449 | `` * php's stat-failure warning: `filemtime(): stat failed for /nope`, and`` |
 |      - |  450 | `` * `filetype(): Lstat failed for /nope` for the two members that LSTAT. php raises`` |
@@ -487,32 +487,32 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  477 | ` * xStat: pOut gets the numeric run first and then the names, which is php's own` |
 |      - |  478 | ` * insertion order — visible through foreach, print_r, var_dump and json_encode.` |
 |      - |  479 | ` */` |
-|     72 |  480 | `PH7_PRIVATE int PH7_VfsStatDoubleUp(ph7_value *pIn,ph7_value *pOut)` |
-|      2 |  481 | `{` |
+|     76 |  480 | `PH7_PRIVATE int PH7_VfsStatDoubleUp(ph7_value *pIn,ph7_value *pOut)` |
+|      3 |  481 | `{` |
 |      - |  482 | `	static const char * const azField[] = {` |
 |      - |  483 | `		"dev","ino","mode","nlink","uid","gid","rdev","size",` |
 |      - |  484 | `		"atime","mtime","ctime","blksize","blocks"` |
 |      - |  485 | `	};` |
 |      - |  486 | `	sxu32 i;` |
-|     74 |  487 | `	if( pIn == 0 \|\| pOut == 0 ){` |
+|     79 |  487 | `	if( pIn == 0 \|\| pOut == 0 ){` |
 |    ! 0 |  488 | `		return -1;` |
 |      - |  489 | `	}` |
-|    958 |  490 | `	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){` |
-|    890 |  491 | `		ph7_value *pField = ph7_array_fetch(pIn,azField[i],-1);` |
-|    890 |  492 | `		if( pField == 0 ){` |
+|   1015 |  490 | `	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){` |
+|    943 |  491 | `		ph7_value *pField = ph7_array_fetch(pIn,azField[i],-1);` |
+|    943 |  492 | `		if( pField == 0 ){` |
 |      - |  493 | `			/* A VFS that does not report this field: php always has all thirteen,` |
 |      - |  494 | `			 * so the doubling would silently shift every later index. Hand the` |
 |      - |  495 | `			 * caller the named-only array it already had instead. */` |
 |      5 |  496 | `			return -1;` |
 |      - |  497 | `		}` |
-|    886 |  498 | `		ph7_array_add_elem(pOut,0,pField);` |
-|    444 |  499 | `	}` |
-|    954 |  500 | `	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){` |
-|    886 |  501 | `		ph7_value *pField = ph7_array_fetch(pIn,azField[i],-1);` |
-|    886 |  502 | `		ph7_array_add_strkey_elem(pOut,azField[i],pField);` |
-|    444 |  503 | `	}` |
-|     70 |  504 | `	return PH7_OK;` |
-|     38 |  505 | `}` |
+|    939 |  498 | `		ph7_array_add_elem(pOut,0,pField);` |
+|    471 |  499 | `	}` |
+|   1011 |  500 | `	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){` |
+|    939 |  501 | `		ph7_value *pField = ph7_array_fetch(pIn,azField[i],-1);` |
+|    939 |  502 | `		ph7_array_add_strkey_elem(pOut,azField[i],pField);` |
+|    471 |  503 | `	}` |
+|     75 |  504 | `	return PH7_OK;` |
+|     41 |  505 | `}` |
 |      - |  506 | `/*` |
 |      - |  507 | ` * The thirteen NAMED fields of a stat answer, filled from thirteen values in` |
 |      - |  508 | ` * php's own order. Two devices that never had a stat need one: php's memory` |
@@ -521,22 +521,22 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  511 | ` * real fstat() of its handle. Both go through here so the field list -- and` |
 |      - |  512 | ` * therefore what PH7_VfsStatDoubleUp() can double -- exists in one place.` |
 |      - |  513 | ` */` |
-|     48 |  514 | `PH7_PRIVATE int PH7_VfsStatFill(ph7_value *pArray,ph7_value *pWorker,const ph7_int64 *aVal)` |
-|      1 |  515 | `{` |
+|     52 |  514 | `PH7_PRIVATE int PH7_VfsStatFill(ph7_value *pArray,ph7_value *pWorker,const ph7_int64 *aVal)` |
+|      2 |  515 | `{` |
 |      - |  516 | `	static const char * const azField[] = {` |
 |      - |  517 | `		"dev","ino","mode","nlink","uid","gid","rdev","size",` |
 |      - |  518 | `		"atime","mtime","ctime","blksize","blocks"` |
 |      - |  519 | `	};` |
 |      - |  520 | `	sxu32 i;` |
-|     49 |  521 | `	if( pArray == 0 \|\| pWorker == 0 \|\| aVal == 0 ){` |
+|     54 |  521 | `	if( pArray == 0 \|\| pWorker == 0 \|\| aVal == 0 ){` |
 |    ! 0 |  522 | `		return -1;` |
 |      - |  523 | `	}` |
-|    673 |  524 | `	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){` |
-|    625 |  525 | `		ph7_value_int64(pWorker,aVal[i]);` |
-|    625 |  526 | `		ph7_array_add_strkey_elem(pArray,azField[i],pWorker); /* Takes its own copy */` |
-|    313 |  527 | `	}` |
-|     49 |  528 | `	return PH7_OK;` |
-|     25 |  529 | `}` |
+|    730 |  524 | `	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){` |
+|    678 |  525 | `		ph7_value_int64(pWorker,aVal[i]);` |
+|    678 |  526 | `		ph7_array_add_strkey_elem(pArray,azField[i],pWorker); /* Takes its own copy */` |
+|    340 |  527 | `	}` |
+|     54 |  528 | `	return PH7_OK;` |
+|     28 |  529 | `}` |
 |      - |  530 | `/*` |
 |      - |  531 | ` * The real fstat() of an open descriptor, in the shape above. php's pipe,` |
 |      - |  532 | ` * socket and php://stdin\|stdout\|stderr streams all answer exactly this -- the` |
@@ -603,19 +603,19 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  593 | ` * Answers 1 when a wrapper owned the path and the result is set; 0 when none did and` |
 |      - |  594 | ` * the caller carries on to the VFS.` |
 |      - |  595 | ` */` |
-|  52506 |  596 | `static int VfsUserWrite(ph7_context *pCtx,const char *zPath,const char *zMethod,` |
+|  55778 |  596 | `static int VfsUserWrite(ph7_context *pCtx,const char *zPath,const char *zMethod,` |
 |      - |  597 | `	void *pStreamCtx,ph7_value **apExtra,int nExtra)` |
 |      5 |  598 | `{` |
-|  52511 |  599 | `	int bAnswer = 0;` |
-|  52511 |  600 | `	int rc = PH7_StreamUserPathOp(pCtx,zPath,zMethod,pStreamCtx,apExtra,nExtra,&bAnswer);` |
-|  52511 |  601 | `	if( rc == PHL_URLSTAT_NOWRAP ){` |
-|  52439 |  602 | `		return 0;` |
+|  55783 |  599 | `	int bAnswer = 0;` |
+|  55783 |  600 | `	int rc = PH7_StreamUserPathOp(pCtx,zPath,zMethod,pStreamCtx,apExtra,nExtra,&bAnswer);` |
+|  55783 |  601 | `	if( rc == PHL_URLSTAT_NOWRAP ){` |
+|  55711 |  602 | `		return 0;` |
 |      - |  603 | `	}` |
 |      - |  604 | `	/* A wrapper that declined, one with no such method (php has already said so), and` |
 |      - |  605 | `	 * one that threw all answer the same false; the throw is its own report. */` |
 |     74 |  606 | `	ph7_result_bool(pCtx,rc == PHL_URLSTAT_OK ? bAnswer : 0);` |
 |     74 |  607 | `	return 1;` |
-|  26232 |  608 | `}` |
+|  27868 |  608 | `}` |
 |      - |  609 | `/*` |
 |      - |  610 | ` * ---------------------------------------------------------------------------` |
 |      - |  611 | ` * The stat family over a path a USERLAND stream wrapper owns.` |
@@ -640,15 +640,15 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  630 | ` * ---------------------------------------------------------------------------` |
 |      - |  631 | ` */` |
 |      - |  632 | `/* The seven questions php asks QUIETLY, and reports as a bare false. */` |
-|  27145 |  633 | `static int VfsAskIsQuiet(int eAsk)` |
+|  28756 |  633 | `static int VfsAskIsQuiet(int eAsk)` |
 |      5 |  634 | `{` |
-|  27150 |  635 | `	return eAsk <= PH7_STAT_ASK_IS_X;` |
+|  28761 |  635 | `	return eAsk <= PH7_STAT_ASK_IS_X;` |
 |      5 |  636 | `}` |
 |      - |  637 | ``/* The three php asks with LSTAT, and words a failure as `Lstat failed for`. */`` |
-|  27119 |  638 | `static int VfsAskIsLink(int eAsk)` |
+|  28730 |  638 | `static int VfsAskIsLink(int eAsk)` |
 |      5 |  639 | `{` |
-|  40596 |  640 | `	return eAsk == PH7_STAT_ASK_IS_LINK \|\| eAsk == PH7_STAT_ASK_TYPE` |
-|  40655 |  641 | `	    \|\| eAsk == PH7_STAT_ASK_LSTAT;` |
+|  43014 |  640 | `	return eAsk == PH7_STAT_ASK_IS_LINK \|\| eAsk == PH7_STAT_ASK_TYPE` |
+|  43070 |  641 | `	    \|\| eAsk == PH7_STAT_ASK_LSTAT;` |
 |      5 |  642 | `}` |
 |      - |  643 | `/*` |
 |      - |  644 | ` * php's rmask/wmask/xmask for a stat record that did not come from a plain file.` |
@@ -705,29 +705,29 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  695 | ` * PHL_URLSTAT_NOWRAP means nothing here owns the path and the caller carries on to` |
 |      - |  696 | ` * the VFS.` |
 |      - |  697 | ` */` |
-|  27111 |  698 | `PH7_PRIVATE int PH7_VfsUserStatFields(ph7_context *pCtx,const char *zPath,int eAsk,` |
+|  28722 |  698 | `PH7_PRIVATE int PH7_VfsUserStatFields(ph7_context *pCtx,const char *zPath,int eAsk,` |
 |      - |  699 | `	ph7_int64 *aVal)` |
 |      5 |  700 | `{` |
-|  27116 |  701 | `	int iFlags = PH7_URL_STAT_NOCACHE;` |
+|  28727 |  701 | `	int iFlags = PH7_URL_STAT_NOCACHE;` |
 |      - |  702 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |      - |  703 | `	/* An ARCHIVE answers for its own entries. php gives every wrapper a` |
 |      - |  704 | `	 * url_stat handler and routes the whole stat family through it, which is` |
 |      - |  705 | ``	 * what makes `file_exists('phar://x.phar/f')` and `is_dir()` true for a name`` |
 |      - |  706 | `	 * that exists nowhere on disk. This engine has the door for a USERLAND` |
 |      - |  707 | `	 * wrapper (below) and this one built-in wrapper that needs it. */` |
-|  27116 |  708 | `	if( zPath && SyStrnicmp(zPath,"phar://",sizeof("phar://")-1) == 0 ){` |
+|  28727 |  708 | `	if( zPath && SyStrnicmp(zPath,"phar://",sizeof("phar://")-1) == 0 ){` |
 |     16 |  709 | `		return PH7_PharUrlStat(pCtx->pVm,&zPath[sizeof("phar://")-1],aVal) == 0` |
 |      8 |  710 | `			? PHL_URLSTAT_OK : PHL_URLSTAT_FAIL;` |
 |      - |  711 | `	}` |
 |      - |  712 | `#endif` |
-|  27100 |  713 | `	if( VfsAskIsLink(eAsk) ){` |
+|  28711 |  713 | `	if( VfsAskIsLink(eAsk) ){` |
 |    126 |  714 | `		iFlags \|= PH7_URL_STAT_LINK;` |
 |     62 |  715 | `	}` |
-|  27100 |  716 | `	if( VfsAskIsQuiet(eAsk) ){` |
-|  26644 |  717 | `		iFlags \|= PH7_URL_STAT_QUIET;` |
-|  13315 |  718 | `	}` |
-|  27100 |  719 | `	return PH7_StreamUserUrlStat(pCtx,zPath,iFlags,aVal);` |
-|  13556 |  720 | `}` |
+|  28711 |  716 | `	if( VfsAskIsQuiet(eAsk) ){` |
+|  28250 |  717 | `		iFlags \|= PH7_URL_STAT_QUIET;` |
+|  14118 |  718 | `	}` |
+|  28711 |  719 | `	return PH7_StreamUserUrlStat(pCtx,zPath,iFlags,aVal);` |
+|  14363 |  720 | `}` |
 |      - |  721 | `/*` |
 |      - |  722 | ` * Answer one question from a filled record. Shared with SplFileInfo, whose` |
 |      - |  723 | ` * accessors ask exactly the same things of exactly the same thirteen fields.` |
@@ -812,21 +812,21 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  802 | ` * The one line every member of the family carries: if a userland wrapper owns this` |
 |      - |  803 | ` * path, answer from it and stop. Returns 0 when nothing does.` |
 |      - |  804 | ` */` |
-|  26892 |  805 | `static int VfsUserStat(ph7_context *pCtx,const char *zPath,int eAsk)` |
+|  28503 |  805 | `static int VfsUserStat(ph7_context *pCtx,const char *zPath,int eAsk)` |
 |      5 |  806 | `{` |
 |      - |  807 | `	ph7_int64 aVal[13];` |
 |      - |  808 | `	SyBlob sPath;` |
 |      - |  809 | `	int rc;` |
-|  26897 |  810 | `	if( zPath == 0 ){` |
+|  28508 |  810 | `	if( zPath == 0 ){` |
 |    ! 0 |  811 | `		return 0;` |
 |      - |  812 | `	}` |
 |      - |  813 | `	/* The wrapper is PHP code, and running some can move the argument slot zPath` |
 |      - |  814 | `	 * points into -- so the copy the failure message needs is taken first. */` |
-|  26897 |  815 | `	SyBlobInit(&sPath,&pCtx->pVm->sAllocator);` |
-|  26897 |  816 | `	SyBlobAppend(&sPath,zPath,(sxu32)SyStrlen(zPath));` |
-|  26897 |  817 | `	SyBlobAppend(&sPath,"",1); /* NUL, for the %s below */` |
-|  26897 |  818 | `	rc = PH7_VfsUserStatFields(pCtx,zPath,eAsk,aVal);` |
-|  26897 |  819 | `	if( rc == PHL_URLSTAT_NOWRAP ){` |
+|  28508 |  815 | `	SyBlobInit(&sPath,&pCtx->pVm->sAllocator);` |
+|  28508 |  816 | `	SyBlobAppend(&sPath,zPath,(sxu32)SyStrlen(zPath));` |
+|  28508 |  817 | `	SyBlobAppend(&sPath,"",1); /* NUL, for the %s below */` |
+|  28508 |  818 | `	rc = PH7_VfsUserStatFields(pCtx,zPath,eAsk,aVal);` |
+|  28508 |  819 | `	if( rc == PHL_URLSTAT_NOWRAP ){` |
 |      - |  820 | `		/* php resolves the wrapper for a stat the same way it resolves one for an` |
 |      - |  821 | `		 * open (php_stream_locate_url_wrapper), so a scheme nothing is registered` |
 |      - |  822 | `		 * under is NAMED here too -- and then forgotten, the whole uri going on to` |
@@ -838,11 +838,11 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  828 | `		 * door uses, which says nothing for a scheme somebody IS registered under.` |
 |      - |  829 | `		 * The device it resolves is the plain-files one this path already takes. */` |
 |      - |  830 | `		{` |
-|  26611 |  831 | `			const char *zProbe = (const char *)SyBlobData(&sPath);` |
-|  26611 |  832 | `			PH7_VfsStreamDeviceOrFile(pCtx,&zProbe,(int)SyStrlen(zProbe));` |
+|  28222 |  831 | `			const char *zProbe = (const char *)SyBlobData(&sPath);` |
+|  28222 |  832 | `			PH7_VfsStreamDeviceOrFile(pCtx,&zProbe,(int)SyStrlen(zProbe));` |
 |      - |  833 | `		}` |
-|  26611 |  834 | `		SyBlobRelease(&sPath);` |
-|  26611 |  835 | `		return 0;` |
+|  28222 |  834 | `		SyBlobRelease(&sPath);` |
+|  28222 |  835 | `		return 0;` |
 |      - |  836 | `	}` |
 |    287 |  837 | `	if( rc == PHL_URLSTAT_OK ){` |
 |    237 |  838 | `		PH7_VfsUserStatResult(pCtx,eAsk,aVal);` |
@@ -854,7 +854,7 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  844 | `	}` |
 |    287 |  845 | `	SyBlobRelease(&sPath);` |
 |    287 |  846 | `	return 1;` |
-|  13446 |  847 | `}` |
+|  14253 |  847 | `}` |
 |      - |  848 | `/*` |
 |      - |  849 | ` * Can this path be stat'ed at all? The three TIME readers report a failure as -1,` |
 |      - |  850 | ` * which is also a legitimate timestamp (a file stamped in the last second before` |
@@ -880,16 +880,16 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  870 | ` * The conversion itself is already in ph7_value_to_string(); only the screen in front` |
 |      - |  871 | ` * of it was wrong.` |
 |      - |  872 | ` */` |
-| 101944 |  873 | `static int VfsPathArgUsable(ph7_value *pVal)` |
+| 108195 |  873 | `static int VfsPathArgUsable(ph7_value *pVal)` |
 |      5 |  874 | `{` |
-| 101949 |  875 | `	if( pVal == 0 ){` |
+| 108200 |  875 | `	if( pVal == 0 ){` |
 |    ! 0 |  876 | `		return 0;` |
 |      - |  877 | `	}` |
-| 101949 |  878 | `	if( ph7_value_is_string(pVal) ){` |
-| 101949 |  879 | `		return 1;` |
+| 108200 |  878 | `	if( ph7_value_is_string(pVal) ){` |
+| 108200 |  879 | `		return 1;` |
 |      - |  880 | `	}` |
 |    ! 0 |  881 | `	return ph7_value_is_object(pVal) && !PH7_MemObjIsNotStringable(pVal);` |
-|  50943 |  882 | `}` |
+|  54070 |  882 | `}` |
 |      - |  883 |  |
 |      - |  884 | `/*` |
 |      - |  885 | ` * bool chdir(string $directory)` |
@@ -900,7 +900,7 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  890 | ` * Return` |
 |      - |  891 | ` *  TRUE on success or FALSE on failure.` |
 |      - |  892 | ` */` |
-|  17590 |  893 | `static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  18206 |  893 | `static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  894 | `{` |
 |      - |  895 | `	const char *zPath;` |
 |      - |  896 | `	ph7_vfs *pVfs;` |
@@ -908,14 +908,14 @@ Coverage: 1948/2421 lines (80.46%)
 |      - |  898 | `	/* Only the ARITY is checked here: php coerces a scalar $directory to string,` |
 |      - |  899 | `	 * so chdir(123) attempts "123" and warns that it does not exist. Requiring a` |
 |      - |  900 | `	 * string outright made that call return FALSE silently, with no diagnostic. */` |
-|  17595 |  901 | `	if( nArg < 1 ){` |
+|  18211 |  901 | `	if( nArg < 1 ){` |
 |      - |  902 | `		/* Missing argument,return FALSE */` |
 |    ! 0 |  903 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  904 | `		return PH7_OK;` |
 |      - |  905 | `	}` |
 |      - |  906 | `	/* Point to the underlying vfs */` |
-|  17595 |  907 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|  17595 |  908 | `	if( pVfs == 0 \|\| pVfs->xChdir == 0 ){` |
+|  18211 |  907 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|  18211 |  908 | `	if( pVfs == 0 \|\| pVfs->xChdir == 0 ){` |
 |      - |  909 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 |  910 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - |  911 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -925,19 +925,19 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 |  915 | `		return PH7_OK;` |
 |      - |  916 | `	}` |
 |      - |  917 | `	/* Point to the desired directory */` |
-|  17595 |  918 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|  18211 |  918 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - |  919 | `	/* Perform the requested operation */` |
-|  17595 |  920 | `	errno = 0;` |
-|  17595 |  921 | `	rc = pVfs->xChdir(zPath);` |
-|  17595 |  922 | `	if( rc != PH7_OK ){` |
+|  18211 |  920 | `	errno = 0;` |
+|  18211 |  921 | `	rc = pVfs->xChdir(zPath);` |
+|  18211 |  922 | `	if( rc != PH7_OK ){` |
 |      - |  923 | `		/* chdir has its own php shape: no path, and the errno spelled out. */` |
 |      8 |  924 | `		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s (errno %d)",` |
 |      4 |  925 | `			ph7_function_name(pCtx),VfsStrerror(errno),errno);` |
 |      2 |  926 | `	}` |
 |      - |  927 | `	/* IO return value */` |
-|  17595 |  928 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|  17595 |  929 | `	return PH7_OK;` |
-|   8795 |  930 | `}` |
+|  18211 |  928 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|  18211 |  929 | `	return PH7_OK;` |
+|   9103 |  930 | `}` |
 |      - |  931 | `/*` |
 |      - |  932 | ` * bool chroot(string $directory)` |
 |      - |  933 | ` *  Change the root directory.` |
@@ -1033,21 +1033,21 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1023 | ` * Return` |
 |      - | 1024 | ` *  TRUE on success or FALSE on failure.` |
 |      - | 1025 | ` */` |
-|    416 | 1026 | `static int PH7_vfs_rmdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    426 | 1026 | `static int PH7_vfs_rmdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 1027 | `{` |
 |      - | 1028 | `	const char *zPath;` |
 |      - | 1029 | `	ph7_vfs *pVfs;` |
 |      - | 1030 | `	phl_stream_ctx *pStreamCtx;` |
-|    421 | 1031 | `	int rc,bThrew = 0;` |
-|    421 | 1032 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|    431 | 1031 | `	int rc,bThrew = 0;` |
+|    431 | 1032 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 1033 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 1034 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 1035 | `		return PH7_OK;` |
 |      - | 1036 | `	}` |
 |      - | 1037 | ``	/* php's `?resource $context`, refused when it is a resource of another kind,`` |
 |      - | 1038 | `	 * and SET on the wrapper instance the write door below dispatches to. */` |
-|    421 | 1039 | `	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);` |
-|    421 | 1040 | `	if( bThrew ){` |
+|    431 | 1039 | `	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);` |
+|    431 | 1040 | `	if( bThrew ){` |
 |      3 | 1041 | `		return PH7_OK;` |
 |      - | 1042 | `	}` |
 |      - | 1043 | `	/* php's rmdir() hands the wrapper the url and its own $options -- always` |
@@ -1056,22 +1056,22 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1046 | `		ph7_value sOpt;` |
 |      - | 1047 | `		ph7_value *apExtra[1];` |
 |      - | 1048 | `		int bDone;` |
-|    419 | 1049 | `		PH7_MemObjInit(pCtx->pVm,&sOpt);` |
-|    419 | 1050 | `		ph7_value_int(&sOpt,PH7_STREAM_REPORT_ERRORS);` |
-|    419 | 1051 | `		apExtra[0] = &sOpt;` |
-|    618 | 1052 | `		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"rmdir",` |
-|    199 | 1053 | `			(void *)pStreamCtx,apExtra,1);` |
-|    419 | 1054 | `		PH7_MemObjRelease(&sOpt);` |
-|    419 | 1055 | `		if( bDone ){` |
+|    429 | 1049 | `		PH7_MemObjInit(pCtx->pVm,&sOpt);` |
+|    429 | 1050 | `		ph7_value_int(&sOpt,PH7_STREAM_REPORT_ERRORS);` |
+|    429 | 1051 | `		apExtra[0] = &sOpt;` |
+|    633 | 1052 | `		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"rmdir",` |
+|    204 | 1053 | `			(void *)pStreamCtx,apExtra,1);` |
+|    429 | 1054 | `		PH7_MemObjRelease(&sOpt);` |
+|    429 | 1055 | `		if( bDone ){` |
 |      7 | 1056 | `			return PH7_OK;` |
 |      - | 1057 | `		}` |
 |      - | 1058 | `	}` |
-|    413 | 1059 | `	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_RMDIR) ){` |
+|    423 | 1059 | `	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_RMDIR) ){` |
 |     23 | 1060 | `		return PH7_OK;` |
 |      - | 1061 | `	}` |
 |      - | 1062 | `	/* Point to the underlying vfs */` |
-|    391 | 1063 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    391 | 1064 | `	if( pVfs == 0 \|\| pVfs->xRmdir == 0 ){` |
+|    401 | 1063 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|    401 | 1064 | `	if( pVfs == 0 \|\| pVfs->xRmdir == 0 ){` |
 |      - | 1065 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 1066 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1067 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -1081,17 +1081,17 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 1071 | `		return PH7_OK;` |
 |      - | 1072 | `	}` |
 |      - | 1073 | `	/* Point to the desired directory */` |
-|    391 | 1074 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|    401 | 1074 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 1075 | `	/* Perform the requested operation */` |
-|    391 | 1076 | `	errno = 0;` |
-|    391 | 1077 | `	rc = pVfs->xRmdir(zPath);` |
-|    391 | 1078 | `	if( rc != PH7_OK ){` |
+|    401 | 1076 | `	errno = 0;` |
+|    401 | 1077 | `	rc = pVfs->xRmdir(zPath);` |
+|    401 | 1078 | `	if( rc != PH7_OK ){` |
 |     33 | 1079 | `		VfsThrowSysWarning(pCtx,zPath);` |
 |     14 | 1080 | `	}` |
 |      - | 1081 | `	/* IO return value */` |
-|    391 | 1082 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|    391 | 1083 | `	return PH7_OK;` |
-|    205 | 1084 | `}` |
+|    401 | 1082 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|    401 | 1083 | `	return PH7_OK;` |
+|    210 | 1084 | `}` |
 |      - | 1085 | `/*` |
 |      - | 1086 | ` * bool is_dir(string $filename)` |
 |      - | 1087 | ` *  Tells whether the given filename is a directory.` |
@@ -1101,23 +1101,23 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1091 | ` * Return` |
 |      - | 1092 | ` *  TRUE on success or FALSE on failure.` |
 |      - | 1093 | ` */` |
-|  14714 | 1094 | `static int PH7_vfs_is_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  15422 | 1094 | `static int PH7_vfs_is_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 1095 | `{` |
 |      - | 1096 | `	const char *zPath;` |
 |      - | 1097 | `	ph7_vfs *pVfs;` |
 |      - | 1098 | `	int rc;` |
-|  14719 | 1099 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|  15427 | 1099 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 1100 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 1101 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 1102 | `		return PH7_OK;` |
 |      - | 1103 | `	}` |
 |      - | 1104 | `	/* php asks the wrapper that owns the path before anything else` |
 |      - | 1105 | `	 * (php_stream_url_stat_path); the VFS answers only what none owns. */` |
-|  14719 | 1106 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_DIR) ){` |
+|  15427 | 1106 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_DIR) ){` |
 |     27 | 1107 | `		return PH7_OK;` |
 |      - | 1108 | `	}` |
-|  14693 | 1109 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|  14693 | 1110 | `	if( pVfs == 0 \|\| pVfs->xIsdir == 0 ){` |
+|  15401 | 1109 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|  15401 | 1110 | `	if( pVfs == 0 \|\| pVfs->xIsdir == 0 ){` |
 |      - | 1111 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 1112 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1113 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -1127,13 +1127,13 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 1117 | `		return PH7_OK;` |
 |      - | 1118 | `	}` |
 |      - | 1119 | `	/* Point to the desired directory */` |
-|  14693 | 1120 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|  15401 | 1120 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 1121 | `	/* Perform the requested operation */` |
-|  14693 | 1122 | `	rc = pVfs->xIsdir(zPath);` |
+|  15401 | 1122 | `	rc = pVfs->xIsdir(zPath);` |
 |      - | 1123 | `	/* IO return value */` |
-|  14693 | 1124 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|  14693 | 1125 | `	return PH7_OK;` |
-|   7359 | 1126 | `}` |
+|  15401 | 1124 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|  15401 | 1125 | `	return PH7_OK;` |
+|   7713 | 1126 | `}` |
 |      - | 1127 | `/*` |
 |      - | 1128 | ` * bool mkdir(string $pathname[,int $mode = 0777 [,bool $recursive = false])` |
 |      - | 1129 | ` *  Make a directory.` |
@@ -1232,13 +1232,13 @@ Coverage: 1948/2421 lines (80.46%)
 |      3 | 1222 | `		return -1;` |
 |      - | 1223 | `	}` |
 |     53 | 1224 | `	SyBlobInit(&sWorker,&pCtx->pVm->sAllocator);` |
-|   2462 | 1225 | `	for( i = 1 ; i <= nPath ; i++ ){` |
-|   2420 | 1226 | `		int bLeaf = (i == nPath);` |
-|   2420 | 1227 | `		if( !bLeaf ){` |
+|   2461 | 1225 | `	for( i = 1 ; i <= nPath ; i++ ){` |
+|   2419 | 1226 | `		int bLeaf = (i == nPath);` |
+|   2419 | 1227 | `		if( !bLeaf ){` |
 |      - | 1228 | `			/* Only at a separator that ENDS a component: a run of them names` |
 |      - | 1229 | `			 * the same ancestor once. */` |
-|   2370 | 1230 | `			if( !VFS_MKDIR_SLASH(zPath[i]) \|\| VFS_MKDIR_SLASH(zPath[i-1]) ){` |
-|   2146 | 1231 | `				continue;` |
+|   2369 | 1230 | `			if( !VFS_MKDIR_SLASH(zPath[i]) \|\| VFS_MKDIR_SLASH(zPath[i-1]) ){` |
+|   2145 | 1231 | `				continue;` |
 |      - | 1232 | `			}` |
 |    227 | 1233 | `			if( VfsMkdirVolumePrefix(zPath,i) ){` |
 |      3 | 1234 | `				continue;` |
@@ -1256,30 +1256,30 @@ Coverage: 1948/2421 lines (80.46%)
 |    106 | 1246 | `		errno = 0;` |
 |    106 | 1247 | `		rc = pVfs->xMkdir((const char *)SyBlobData(&sWorker),iMode,0);` |
 |    106 | 1248 | `		if( rc != PH7_OK ){` |
-|     12 | 1249 | `			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",` |
+|     13 | 1249 | `			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",` |
 |      8 | 1250 | `				ph7_function_name(pCtx),VfsStrerror(errno));` |
-|      9 | 1251 | `			break;` |
+|     10 | 1251 | `			break;` |
 |      - | 1252 | `		}` |
 |     44 | 1253 | `	}` |
 |     53 | 1254 | `	SyBlobRelease(&sWorker);` |
 |     53 | 1255 | `	return rc;` |
 |     25 | 1256 | `}` |
-|    361 | 1257 | `static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    371 | 1257 | `static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 1258 | `{` |
-|    366 | 1259 | `	int iRecursive = 0;` |
+|    376 | 1259 | `	int iRecursive = 0;` |
 |      - | 1260 | `	const char *zPath;` |
 |      - | 1261 | `	ph7_vfs *pVfs;` |
 |      - | 1262 | `	phl_stream_ctx *pStreamCtx;` |
-|    366 | 1263 | `	int iMode,rc,bThrew = 0;` |
-|    366 | 1264 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|    376 | 1263 | `	int iMode,rc,bThrew = 0;` |
+|    376 | 1264 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 1265 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 1266 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 1267 | `		return PH7_OK;` |
 |      - | 1268 | `	}` |
 |      - | 1269 | ``	/* php's `?resource $context`, refused when it is a resource of another kind,`` |
 |      - | 1270 | `	 * and SET on the wrapper instance the write door below dispatches to. */` |
-|    366 | 1271 | `	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,3,"$context",0,&bThrew);` |
-|    366 | 1272 | `	if( bThrew ){` |
+|    376 | 1271 | `	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,3,"$context",0,&bThrew);` |
+|    376 | 1272 | `	if( bThrew ){` |
 |      6 | 1273 | `		return PH7_OK;` |
 |      - | 1274 | `	}` |
 |      - | 1275 | `	/* php's mkdir() hands the wrapper ($url, $mode, $options) -- the mode the caller` |
@@ -1289,27 +1289,27 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1279 | `		ph7_value sMode,sOpt;` |
 |      - | 1280 | `		ph7_value *apExtra[2];` |
 |      - | 1281 | `		int bDone;` |
-|    362 | 1282 | `		PH7_MemObjInit(pCtx->pVm,&sMode);` |
-|    362 | 1283 | `		PH7_MemObjInit(pCtx->pVm,&sOpt);` |
-|    362 | 1284 | `		ph7_value_int(&sMode,nArg > 1 ? ph7_value_to_int(apArg[1]) : 0777);` |
-|    362 | 1285 | `		ph7_value_int(&sOpt,PH7_STREAM_REPORT_ERRORS` |
-|    357 | 1286 | `			\| ((nArg > 2 && ph7_value_to_bool(apArg[2])) ? PH7_STREAM_MKDIR_RECURSIVE : 0));` |
-|    362 | 1287 | `		apExtra[0] = &sMode;` |
-|    362 | 1288 | `		apExtra[1] = &sOpt;` |
-|    535 | 1289 | `		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"mkdir",` |
-|    173 | 1290 | `			(void *)pStreamCtx,apExtra,2);` |
-|    362 | 1291 | `		PH7_MemObjRelease(&sMode);` |
-|    362 | 1292 | `		PH7_MemObjRelease(&sOpt);` |
-|    362 | 1293 | `		if( bDone ){` |
+|    372 | 1282 | `		PH7_MemObjInit(pCtx->pVm,&sMode);` |
+|    372 | 1283 | `		PH7_MemObjInit(pCtx->pVm,&sOpt);` |
+|    372 | 1284 | `		ph7_value_int(&sMode,nArg > 1 ? ph7_value_to_int(apArg[1]) : 0777);` |
+|    372 | 1285 | `		ph7_value_int(&sOpt,PH7_STREAM_REPORT_ERRORS` |
+|    367 | 1286 | `			\| ((nArg > 2 && ph7_value_to_bool(apArg[2])) ? PH7_STREAM_MKDIR_RECURSIVE : 0));` |
+|    372 | 1287 | `		apExtra[0] = &sMode;` |
+|    372 | 1288 | `		apExtra[1] = &sOpt;` |
+|    550 | 1289 | `		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"mkdir",` |
+|    178 | 1290 | `			(void *)pStreamCtx,apExtra,2);` |
+|    372 | 1291 | `		PH7_MemObjRelease(&sMode);` |
+|    372 | 1292 | `		PH7_MemObjRelease(&sOpt);` |
+|    372 | 1293 | `		if( bDone ){` |
 |     11 | 1294 | `			return PH7_OK;` |
 |      - | 1295 | `		}` |
 |      - | 1296 | `	}` |
-|    352 | 1297 | `	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_MKDIR) ){` |
+|    362 | 1297 | `	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_MKDIR) ){` |
 |     22 | 1298 | `		return PH7_OK;` |
 |      - | 1299 | `	}` |
 |      - | 1300 | `	/* Point to the underlying vfs */` |
-|    332 | 1301 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    332 | 1302 | `	if( pVfs == 0 \|\| pVfs->xMkdir == 0 ){` |
+|    342 | 1301 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|    342 | 1302 | `	if( pVfs == 0 \|\| pVfs->xMkdir == 0 ){` |
 |      - | 1303 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 1304 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1305 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -1319,35 +1319,35 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 1309 | `		return PH7_OK;` |
 |      - | 1310 | `	}` |
 |      - | 1311 | `	/* Point to the desired directory */` |
-|    332 | 1312 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|    342 | 1312 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 1313 | `#ifdef __WINNT__` |
 |      5 | 1314 | `	iMode = 0;` |
 |      - | 1315 | `#else` |
 |      - | 1316 | `	/* Assume UNIX */` |
-|    327 | 1317 | `	iMode = 0777;` |
+|    337 | 1317 | `	iMode = 0777;` |
 |      - | 1318 | `#endif` |
-|    332 | 1319 | `	if( nArg > 1 ){` |
+|    342 | 1319 | `	if( nArg > 1 ){` |
 |     55 | 1320 | `		iMode = ph7_value_to_int(apArg[1]);` |
 |     55 | 1321 | `		if( nArg > 2 ){` |
 |     55 | 1322 | `			iRecursive = ph7_value_to_bool(apArg[2]);` |
 |     22 | 1323 | `		}` |
 |     22 | 1324 | `	}` |
 |      - | 1325 | `	/* Perform the requested operation */` |
-|    332 | 1326 | `	if( iRecursive ){` |
+|    342 | 1326 | `	if( iRecursive ){` |
 |     55 | 1327 | `		rc = VfsMkdirRecursive(pCtx,pVfs,zPath,iMode);` |
 |     25 | 1328 | `	}else{` |
-|    280 | 1329 | `		errno = 0;` |
-|    280 | 1330 | `		rc = pVfs->xMkdir(zPath,iMode,0);` |
-|    280 | 1331 | `		if( rc != PH7_OK ){` |
+|    290 | 1329 | `		errno = 0;` |
+|    290 | 1330 | `		rc = pVfs->xMkdir(zPath,iMode,0);` |
+|    290 | 1331 | `		if( rc != PH7_OK ){` |
 |      - | 1332 | `			/* php does NOT name the path for mkdir: "mkdir(): File exists" */` |
 |      7 | 1333 | `			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",` |
 |      4 | 1334 | `				ph7_function_name(pCtx),VfsStrerror(errno));` |
 |      2 | 1335 | `		}` |
 |      - | 1336 | `	}` |
 |      - | 1337 | `	/* IO return value */` |
-|    332 | 1338 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|    332 | 1339 | `	return PH7_OK;` |
-|    180 | 1340 | `}` |
+|    342 | 1338 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|    342 | 1339 | `	return PH7_OK;` |
+|    185 | 1340 | `}` |
 |      - | 1341 | `/*` |
 |      - | 1342 | ` * bool rename(string $oldname,string $newname)` |
 |      - | 1343 | ` *  Attempts to rename oldname to newname.` |
@@ -1467,19 +1467,19 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1457 | ` * Return` |
 |      - | 1458 | ` *  Canonicalized absolute pathname on success. or FALSE on failure.` |
 |      - | 1459 | ` */` |
-|    812 | 1460 | `static int PH7_vfs_realpath(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    908 | 1460 | `static int PH7_vfs_realpath(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 1461 | `{` |
 |      - | 1462 | `	const char *zPath;` |
 |      - | 1463 | `	ph7_vfs *pVfs;` |
 |      - | 1464 | `        int rc;` |
-|    817 | 1465 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|    913 | 1465 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 1466 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 1467 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 1468 | `		return PH7_OK;` |
 |      - | 1469 | `	}` |
 |      - | 1470 | `	/* Point to the underlying vfs */` |
-|    817 | 1471 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    817 | 1472 | `	if( pVfs == 0 \|\| pVfs->xRealpath == 0 ){` |
+|    913 | 1471 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|    913 | 1472 | `	if( pVfs == 0 \|\| pVfs->xRealpath == 0 ){` |
 |      - | 1473 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 1474 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1475 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -1489,19 +1489,19 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 1479 | `		return PH7_OK;` |
 |      - | 1480 | `	}` |
 |      - | 1481 | `	/* Set an empty string untnil the underlying OS interface change that */` |
-|    817 | 1482 | `	ph7_result_string(pCtx,"",0);` |
+|    913 | 1482 | `	ph7_result_string(pCtx,"",0);` |
 |      - | 1483 | ``	/* Perform the requested operation. php resolves an EMPTY path as `.` and so`` |
 |      - | 1484 | `	 * answers the working directory, where this answered false. */` |
-|    817 | 1485 | `	zPath = ph7_value_to_string(apArg[0],0);` |
-|    817 | 1486 | `	if( zPath == 0 \|\| zPath[0] == 0 ){` |
+|    913 | 1485 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|    913 | 1486 | `	if( zPath == 0 \|\| zPath[0] == 0 ){` |
 |      2 | 1487 | `		zPath = ".";` |
 |      1 | 1488 | `	}` |
-|    817 | 1489 | `	rc = pVfs->xRealpath(zPath,pCtx);` |
-|    817 | 1490 | `	if( rc != PH7_OK ){` |
+|    913 | 1489 | `	rc = pVfs->xRealpath(zPath,pCtx);` |
+|    913 | 1490 | `	if( rc != PH7_OK ){` |
 |     16 | 1491 | `	 ph7_result_bool(pCtx,0);` |
 |      8 | 1492 | `	}` |
-|    817 | 1493 | `	return PH7_OK;` |
-|    410 | 1494 | `}` |
+|    913 | 1493 | `	return PH7_OK;` |
+|    458 | 1494 | `}` |
 |      - | 1495 | `/*` |
 |      - | 1496 | ` * Does this candidate name something, and if so what is its canonical path?` |
 |      - | 1497 | ` * The existence question is asked separately because xRealpath() writes STRAIGHT` |
@@ -1686,17 +1686,17 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1676 | ` * Return` |
 |      - | 1677 | ` *  None.` |
 |      - | 1678 | ` */` |
-|    193 | 1679 | `static int PH7_vfs_usleep(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    186 | 1679 | `static int PH7_vfs_usleep(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      4 | 1680 | `{` |
 |      - | 1681 | `	ph7_vfs *pVfs;` |
 |      - | 1682 | `	int nSleep;` |
-|    197 | 1683 | `	if( nArg < 1 \|\| !ph7_value_is_int(apArg[0]) ){` |
+|    190 | 1683 | `	if( nArg < 1 \|\| !ph7_value_is_int(apArg[0]) ){` |
 |      - | 1684 | `		/* Missing/Invalid argument,return immediately */` |
 |    ! 0 | 1685 | `		return PH7_OK;` |
 |      - | 1686 | `	}` |
 |      - | 1687 | `	/* Point to the underlying vfs */` |
-|    197 | 1688 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    197 | 1689 | `	if( pVfs == 0 \|\| pVfs->xSleep == 0 ){` |
+|    190 | 1688 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|    190 | 1689 | `	if( pVfs == 0 \|\| pVfs->xSleep == 0 ){` |
 |      - | 1690 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 1691 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1692 | `			"IO routine(%s) not implemented in the underlying VFS",` |
@@ -1705,16 +1705,16 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 1695 | `		return PH7_OK;` |
 |      - | 1696 | `	}` |
 |      - | 1697 | `	/* Amount to sleep */` |
-|    197 | 1698 | `	nSleep = ph7_value_to_int(apArg[0]);` |
-|    197 | 1699 | `	if( nSleep < 0 ){` |
+|    190 | 1698 | `	nSleep = ph7_value_to_int(apArg[0]);` |
+|    190 | 1699 | `	if( nSleep < 0 ){` |
 |      - | 1700 | `		/* php raises rather than sleeping for an unsigned-wrapped eternity */` |
 |      3 | 1701 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |      - | 1702 | `			"usleep(): Argument #1 ($microseconds) must be greater than or equal to 0");` |
 |      - | 1703 | `	}` |
 |      - | 1704 | `	/* Perform the requested operation (Microseconds) */` |
-|    195 | 1705 | `	pVfs->xSleep((unsigned int)nSleep);` |
-|    195 | 1706 | `	return PH7_OK;` |
-|    102 | 1707 | `}` |
+|    188 | 1705 | `	pVfs->xSleep((unsigned int)nSleep);` |
+|    188 | 1706 | `	return PH7_OK;` |
+|     97 | 1707 | `}` |
 |      - | 1708 | `/*` |
 |      - | 1709 | ` * ---------------------------------------------------------------------------` |
 |      - | 1710 | ` * A path operation over a BUILT-IN wrapper other than the plain-file one.` |
@@ -1735,16 +1735,16 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1725 | ` * first and answers for it, including php's "no such method" refusal.` |
 |      - | 1726 | ` * ---------------------------------------------------------------------------` |
 |      - | 1727 | ` */` |
-|  52380 | 1728 | `static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,const char *zDest,int eOp)` |
+|  55652 | 1728 | `static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,const char *zDest,int eOp)` |
 |      5 | 1729 | `{` |
 |      - | 1730 | `	const ph7_io_stream *pStream;` |
-|  52385 | 1731 | `	const char *zTail = zPath;` |
+|  55657 | 1731 | `	const char *zTail = zPath;` |
 |      - | 1732 | `	const char *zLabel;` |
-|  52385 | 1733 | `	if( zPath == 0 ){` |
+|  55657 | 1733 | `	if( zPath == 0 ){` |
 |    ! 0 | 1734 | `		return 0;` |
 |      - | 1735 | `	}` |
-|  52385 | 1736 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zTail,(int)SyStrlen(zPath));` |
-|  52385 | 1737 | `	if( pStream == 0 ){` |
+|  55657 | 1736 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zTail,(int)SyStrlen(zPath));` |
+|  55657 | 1737 | `	if( pStream == 0 ){` |
 |     23 | 1738 | `		int nScheme = 0;` |
 |     23 | 1739 | `		if( PH7_VmStreamDeviceIsRemoteHost(zPath,(int)SyStrlen(zPath),&nScheme) ){` |
 |      - | 1740 | ``			/* `file://host/path` is the OTHER shape: a wrapper was found and`` |
@@ -1771,9 +1771,9 @@ Coverage: 1948/2421 lines (80.46%)
 |     10 | 1761 | `		VfsThrowUnknownWrapperWarning(pCtx,zPath);` |
 |     10 | 1762 | `		return 0;` |
 |      - | 1763 | `	}` |
-|  52363 | 1764 | `	zLabel = PH7_StreamWrapperLabel(pCtx->pVm,pStream);` |
-|  52363 | 1765 | `	if( zLabel == 0 ){` |
-|  52268 | 1766 | `		return 0;` |
+|  55635 | 1764 | `	zLabel = PH7_StreamWrapperLabel(pCtx->pVm,pStream);` |
+|  55635 | 1765 | `	if( zLabel == 0 ){` |
+|  55540 | 1766 | `		return 0;` |
 |      - | 1767 | `	}` |
 |      - | 1768 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |     96 | 1769 | `	if( PH7_PharStreamIs(pStream) && eOp != VFS_POP_CHMOD ){` |
@@ -1805,7 +1805,7 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1795 | `	}` |
 |     29 | 1796 | `	ph7_result_bool(pCtx,0);` |
 |     29 | 1797 | `	return 1;` |
-|  26170 | 1798 | `}` |
+|  27806 | 1798 | `}` |
 |      - | 1799 | `/*` |
 |      - | 1800 | ` * bool unlink (string $filename)` |
 |      - | 1801 | ` *  Delete a file.` |
@@ -1815,34 +1815,34 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1805 | ` * Return` |
 |      - | 1806 | ` *  TRUE on success or FALSE on failure.` |
 |      - | 1807 | ` */` |
-|  50916 | 1808 | `static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  54058 | 1808 | `static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 1809 | `{` |
 |      - | 1810 | `	const char *zPath;` |
 |      - | 1811 | `	ph7_vfs *pVfs;` |
 |      - | 1812 | `	phl_stream_ctx *pStreamCtx;` |
-|  50921 | 1813 | `	int rc,bThrew = 0;` |
-|  50921 | 1814 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|  54063 | 1813 | `	int rc,bThrew = 0;` |
+|  54063 | 1814 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 1815 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 1816 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 1817 | `		return PH7_OK;` |
 |      - | 1818 | `	}` |
 |      - | 1819 | ``	/* php's `?resource $context`, refused when it is a resource of another kind,`` |
 |      - | 1820 | `	 * and SET on the wrapper instance the write door below dispatches to. */` |
-|  50921 | 1821 | `	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);` |
-|  50921 | 1822 | `	if( bThrew ){` |
+|  54063 | 1821 | `	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);` |
+|  54063 | 1822 | `	if( bThrew ){` |
 |      8 | 1823 | `		return PH7_OK;` |
 |      - | 1824 | `	}` |
 |      - | 1825 | `	/* php's unlink() hands the wrapper the url and nothing else. */` |
-|  76360 | 1826 | `	if( VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"unlink",` |
-|  25445 | 1827 | `		(void *)pStreamCtx,0,0) ){` |
+|  81073 | 1826 | `	if( VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"unlink",` |
+|  27016 | 1827 | `		(void *)pStreamCtx,0,0) ){` |
 |      7 | 1828 | `		return PH7_OK;` |
 |      - | 1829 | `	}` |
-|  50909 | 1830 | `	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_UNLINK) ){` |
+|  54051 | 1830 | `	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_UNLINK) ){` |
 |     26 | 1831 | `		return PH7_OK;` |
 |      - | 1832 | `	}` |
 |      - | 1833 | `	/* Point to the underlying vfs */` |
-|  50884 | 1834 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|  50884 | 1835 | `	if( pVfs == 0 \|\| pVfs->xUnlink == 0 ){` |
+|  54026 | 1834 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|  54026 | 1835 | `	if( pVfs == 0 \|\| pVfs->xUnlink == 0 ){` |
 |      - | 1836 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 1837 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1838 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -1852,17 +1852,17 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 1842 | `		return PH7_OK;` |
 |      - | 1843 | `	}` |
 |      - | 1844 | `	/* Point to the desired directory */` |
-|  50884 | 1845 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|  54026 | 1845 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 1846 | `	/* Perform the requested operation */` |
-|  50884 | 1847 | `	errno = 0;` |
-|  50884 | 1848 | `	rc = pVfs->xUnlink(zPath);` |
-|  50884 | 1849 | `	if( rc != PH7_OK ){` |
-|  31211 | 1850 | `		VfsThrowSysWarning(pCtx,zPath);` |
-|  15601 | 1851 | `	}` |
+|  54026 | 1847 | `	errno = 0;` |
+|  54026 | 1848 | `	rc = pVfs->xUnlink(zPath);` |
+|  54026 | 1849 | `	if( rc != PH7_OK ){` |
+|  33531 | 1850 | `		VfsThrowSysWarning(pCtx,zPath);` |
+|  16761 | 1851 | `	}` |
 |      - | 1852 | `	/* IO return value */` |
-|  50884 | 1853 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|  50884 | 1854 | `	return PH7_OK;` |
-|  25453 | 1855 | `}` |
+|  54026 | 1853 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|  54026 | 1854 | `	return PH7_OK;` |
+|  27024 | 1855 | `}` |
 |      - | 1856 | `/*` |
 |      - | 1857 | ` * bool chmod(string $filename,int $mode)` |
 |      - | 1858 | ` *  Attempts to change the mode of the specified file to that given in mode.` |
@@ -1874,13 +1874,13 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1864 | ` * Return` |
 |      - | 1865 | ` *  TRUE on success or FALSE on failure.` |
 |      - | 1866 | ` */` |
-|    681 | 1867 | `static int PH7_vfs_chmod(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    791 | 1867 | `static int PH7_vfs_chmod(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 1868 | `{` |
 |      - | 1869 | `	const char *zPath;` |
 |      - | 1870 | `	ph7_vfs *pVfs;` |
 |      - | 1871 | `	int iMode;` |
 |      - | 1872 | `	int rc;` |
-|    686 | 1873 | `	if( nArg < 2 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|    796 | 1873 | `	if( nArg < 2 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 1874 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 1875 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 1876 | `		return PH7_OK;` |
@@ -1890,26 +1890,26 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 1880 | `		ph7_value sOp,sVal;` |
 |      - | 1881 | `		ph7_value *apExtra[2];` |
 |      - | 1882 | `		int bDone;` |
-|    686 | 1883 | `		PH7_MemObjInit(pCtx->pVm,&sOp);` |
-|    686 | 1884 | `		PH7_MemObjInit(pCtx->pVm,&sVal);` |
-|    686 | 1885 | `		ph7_value_int(&sOp,PH7_STREAM_META_ACCESS);` |
-|    686 | 1886 | `		ph7_value_int(&sVal,ph7_value_to_int(apArg[1]));` |
-|    686 | 1887 | `		apExtra[0] = &sOp;` |
-|    686 | 1888 | `		apExtra[1] = &sVal;` |
-|   1026 | 1889 | `		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"stream_metadata",` |
-|    340 | 1890 | `			0,apExtra,2);` |
-|    686 | 1891 | `		PH7_MemObjRelease(&sOp);` |
-|    686 | 1892 | `		PH7_MemObjRelease(&sVal);` |
-|    686 | 1893 | `		if( bDone ){` |
+|    796 | 1883 | `		PH7_MemObjInit(pCtx->pVm,&sOp);` |
+|    796 | 1884 | `		PH7_MemObjInit(pCtx->pVm,&sVal);` |
+|    796 | 1885 | `		ph7_value_int(&sOp,PH7_STREAM_META_ACCESS);` |
+|    796 | 1886 | `		ph7_value_int(&sVal,ph7_value_to_int(apArg[1]));` |
+|    796 | 1887 | `		apExtra[0] = &sOp;` |
+|    796 | 1888 | `		apExtra[1] = &sVal;` |
+|   1191 | 1889 | `		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"stream_metadata",` |
+|    395 | 1890 | `			0,apExtra,2);` |
+|    796 | 1891 | `		PH7_MemObjRelease(&sOp);` |
+|    796 | 1892 | `		PH7_MemObjRelease(&sVal);` |
+|    796 | 1893 | `		if( bDone ){` |
 |      7 | 1894 | `			return PH7_OK;` |
 |      - | 1895 | `		}` |
 |      - | 1896 | `	}` |
-|    680 | 1897 | `	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_CHMOD) ){` |
+|    790 | 1897 | `	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_CHMOD) ){` |
 |     11 | 1898 | `		return PH7_OK;` |
 |      - | 1899 | `	}` |
 |      - | 1900 | `	/* Point to the underlying vfs */` |
-|    670 | 1901 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    670 | 1902 | `	if( pVfs == 0 \|\| pVfs->xChmod == 0 ){` |
+|    780 | 1901 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|    780 | 1902 | `	if( pVfs == 0 \|\| pVfs->xChmod == 0 ){` |
 |      - | 1903 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 1904 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1905 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -1919,13 +1919,13 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 1909 | `		return PH7_OK;` |
 |      - | 1910 | `	}` |
 |      - | 1911 | `	/* Point to the desired directory */` |
-|    670 | 1912 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|    780 | 1912 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 1913 | `	/* Extract the mode */` |
-|    670 | 1914 | `	iMode = ph7_value_to_int(apArg[1]);` |
+|    780 | 1914 | `	iMode = ph7_value_to_int(apArg[1]);` |
 |      - | 1915 | `	/* Perform the requested operation */` |
-|    670 | 1916 | `	errno = 0;` |
-|    670 | 1917 | `	rc = pVfs->xChmod(zPath,iMode);` |
-|    670 | 1918 | `	if( rc != PH7_OK ){` |
+|    780 | 1916 | `	errno = 0;` |
+|    780 | 1917 | `	rc = pVfs->xChmod(zPath,iMode);` |
+|    780 | 1918 | `	if( rc != PH7_OK ){` |
 |      - | 1919 | `		/* php warns with the C library's own reason and names NO path -- one of` |
 |      - | 1920 | `		 * the family's two shapes, the one mkdir() and the link pair share.` |
 |      - | 1921 | `		 * PHL answered FALSE in silence. */` |
@@ -1933,9 +1933,9 @@ Coverage: 1948/2421 lines (80.46%)
 |      2 | 1923 | `			ph7_function_name(pCtx),VfsStrerror(errno));` |
 |      1 | 1924 | `	}` |
 |      - | 1925 | `	/* IO return value */` |
-|    670 | 1926 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|    670 | 1927 | `	return PH7_OK;` |
-|    345 | 1928 | `}` |
+|    780 | 1926 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|    780 | 1927 | `	return PH7_OK;` |
+|    400 | 1928 | `}` |
 |      - | 1929 | `/*` |
 |      - | 1930 | ` * bool chown(string $filename,string $user)` |
 |      - | 1931 | ` *  Attempts to change the owner of the file filename to user user.` |
@@ -2221,23 +2221,23 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 2211 | ` * Return` |
 |      - | 2212 | ` *  TRUE on success or FALSE on failure.` |
 |      - | 2213 | ` */` |
-|   1001 | 2214 | `static int PH7_vfs_file_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   1115 | 2214 | `static int PH7_vfs_file_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2215 | `{` |
 |      - | 2216 | `	const char *zPath;` |
 |      - | 2217 | `	ph7_vfs *pVfs;` |
 |      - | 2218 | `	int rc;` |
-|   1006 | 2219 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|   1120 | 2219 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 2220 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 2221 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2222 | `		return PH7_OK;` |
 |      - | 2223 | `	}` |
 |      - | 2224 | `	/* php asks the wrapper that owns the path before anything else` |
 |      - | 2225 | `	 * (php_stream_url_stat_path); the VFS answers only what none owns. */` |
-|   1006 | 2226 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_EXISTS) ){` |
+|   1120 | 2226 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_EXISTS) ){` |
 |     25 | 2227 | `		return PH7_OK;` |
 |      - | 2228 | `	}` |
-|    982 | 2229 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    982 | 2230 | `	if( pVfs == 0 \|\| pVfs->xFileExists == 0 ){` |
+|   1096 | 2229 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|   1096 | 2230 | `	if( pVfs == 0 \|\| pVfs->xFileExists == 0 ){` |
 |      - | 2231 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 2232 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 2233 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -2247,13 +2247,13 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 2237 | `		return PH7_OK;` |
 |      - | 2238 | `	}` |
 |      - | 2239 | `	/* Point to the desired directory */` |
-|    982 | 2240 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|   1096 | 2240 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 2241 | `	/* Perform the requested operation */` |
-|    982 | 2242 | `	rc = pVfs->xFileExists(zPath);` |
+|   1096 | 2242 | `	rc = pVfs->xFileExists(zPath);` |
 |      - | 2243 | `	/* IO return value */` |
-|    982 | 2244 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|    982 | 2245 | `	return PH7_OK;` |
-|    504 | 2246 | `}` |
+|   1096 | 2244 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|   1096 | 2245 | `	return PH7_OK;` |
+|    561 | 2246 | `}` |
 |      - | 2247 | `/*` |
 |      - | 2248 | ` * int64 file_size(string $filename)` |
 |      - | 2249 | ` *  Gets the size for the given file.` |
@@ -2301,8 +2301,8 @@ Coverage: 1948/2421 lines (80.46%)
 |      8 | 2291 | `		return PH7_OK;` |
 |      - | 2292 | `	}` |
 |      - | 2293 | `	/* IO return value */` |
-|     39 | 2294 | `	ph7_result_int64(pCtx,iSize);` |
-|     39 | 2295 | `	return PH7_OK;` |
+|     40 | 2294 | `	ph7_result_int64(pCtx,iSize);` |
+|     40 | 2295 | `	return PH7_OK;` |
 |     36 | 2296 | `}` |
 |      - | 2297 | `/*` |
 |      - | 2298 | ` * int64 fileatime(string $filename)` |
@@ -2363,23 +2363,23 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 2353 | ` * Return` |
 |      - | 2354 | ` *  File mtime on success or FALSE on failure.` |
 |      - | 2355 | ` */` |
-|     46 | 2356 | `static int PH7_vfs_file_mtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 | 2357 | `{` |
+|     51 | 2356 | `static int PH7_vfs_file_mtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 | 2357 | `{` |
 |      - | 2358 | `	const char *zPath;` |
 |      - | 2359 | `	ph7_int64 iTime;` |
 |      - | 2360 | `	ph7_vfs *pVfs;` |
-|     49 | 2361 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|     55 | 2361 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 2362 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 2363 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2364 | `		return PH7_OK;` |
 |      - | 2365 | `	}` |
 |      - | 2366 | `	/* php asks the wrapper that owns the path before anything else` |
 |      - | 2367 | `	 * (php_stream_url_stat_path); the VFS answers only what none owns. */` |
-|     49 | 2368 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_MTIME) ){` |
+|     55 | 2368 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_MTIME) ){` |
 |     17 | 2369 | `		return PH7_OK;` |
 |      - | 2370 | `	}` |
-|     33 | 2371 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|     33 | 2372 | `	if( pVfs == 0 \|\| pVfs->xFileMtime == 0 ){` |
+|     39 | 2371 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|     39 | 2372 | `	if( pVfs == 0 \|\| pVfs->xFileMtime == 0 ){` |
 |      - | 2373 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 2374 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 2375 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -2389,10 +2389,10 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 2379 | `		return PH7_OK;` |
 |      - | 2380 | `	}` |
 |      - | 2381 | `	/* Point to the desired directory */` |
-|     33 | 2382 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|     39 | 2382 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 2383 | `	/* Perform the requested operation */` |
-|     33 | 2384 | `	iTime = pVfs->xFileMtime(zPath);` |
-|     33 | 2385 | `	if( iTime < 0 && !VfsPathStatable(pVfs,zPath) ){` |
+|     39 | 2384 | `	iTime = pVfs->xFileMtime(zPath);` |
+|     39 | 2385 | `	if( iTime < 0 && !VfsPathStatable(pVfs,zPath) ){` |
 |      - | 2386 | `		/* php: a stat failure warns and answers FALSE. PH7 answered int(-1) --` |
 |      - | 2387 | `		 * truthy, and one second before the epoch is also a real timestamp, which` |
 |      - | 2388 | `		 * is why the verdict comes from the VFS rather than from the value. */` |
@@ -2401,9 +2401,9 @@ Coverage: 1948/2421 lines (80.46%)
 |      3 | 2391 | `		return PH7_OK;` |
 |      - | 2392 | `	}` |
 |      - | 2393 | `	/* IO return value */` |
-|     31 | 2394 | `	ph7_result_int64(pCtx,iTime);` |
-|     31 | 2395 | `	return PH7_OK;` |
-|     26 | 2396 | `}` |
+|     37 | 2394 | `	ph7_result_int64(pCtx,iTime);` |
+|     37 | 2395 | `	return PH7_OK;` |
+|     31 | 2396 | `}` |
 |      - | 2397 | `/*` |
 |      - | 2398 | ` * int64 filectime(string $filename)` |
 |      - | 2399 | ` *  Gets inode change time of file.` |
@@ -2463,23 +2463,23 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 2453 | ` * Return` |
 |      - | 2454 | ` *  TRUE on success or FALSE on failure.` |
 |      - | 2455 | ` */` |
-|  10134 | 2456 | `static int PH7_vfs_is_file(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  10810 | 2456 | `static int PH7_vfs_is_file(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2457 | `{` |
 |      - | 2458 | `	const char *zPath;` |
 |      - | 2459 | `	ph7_vfs *pVfs;` |
 |      - | 2460 | `	int rc;` |
-|  10139 | 2461 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|  10815 | 2461 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 2462 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 2463 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2464 | `		return PH7_OK;` |
 |      - | 2465 | `	}` |
 |      - | 2466 | `	/* php asks the wrapper that owns the path before anything else` |
 |      - | 2467 | `	 * (php_stream_url_stat_path); the VFS answers only what none owns. */` |
-|  10139 | 2468 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_FILE) ){` |
+|  10815 | 2468 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_FILE) ){` |
 |     23 | 2469 | `		return PH7_OK;` |
 |      - | 2470 | `	}` |
-|  10117 | 2471 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|  10117 | 2472 | `	if( pVfs == 0 \|\| pVfs->xIsfile == 0 ){` |
+|  10793 | 2471 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|  10793 | 2472 | `	if( pVfs == 0 \|\| pVfs->xIsfile == 0 ){` |
 |      - | 2473 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 2474 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 2475 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -2489,13 +2489,13 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 2479 | `		return PH7_OK;` |
 |      - | 2480 | `	}` |
 |      - | 2481 | `	/* Point to the desired directory */` |
-|  10117 | 2482 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|  10793 | 2482 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 2483 | `	/* Perform the requested operation */` |
-|  10117 | 2484 | `	rc = pVfs->xIsfile(zPath);` |
+|  10793 | 2484 | `	rc = pVfs->xIsfile(zPath);` |
 |      - | 2485 | `	/* IO return value */` |
-|  10117 | 2486 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|  10117 | 2487 | `	return PH7_OK;` |
-|   5072 | 2488 | `}` |
+|  10793 | 2486 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|  10793 | 2487 | `	return PH7_OK;` |
+|   5410 | 2488 | `}` |
 |      - | 2489 | `/*` |
 |      - | 2490 | ` * bool is_link(string $filename)` |
 |      - | 2491 | ` *  Tells whether the filename is a symbolic link.` |
@@ -2589,23 +2589,23 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 2579 | ` * Return` |
 |      - | 2580 | ` *  TRUE on success or FALSE on failure.` |
 |      - | 2581 | ` */` |
-|    633 | 2582 | `static int PH7_vfs_is_writable(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    741 | 2582 | `static int PH7_vfs_is_writable(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2583 | `{` |
 |      - | 2584 | `	const char *zPath;` |
 |      - | 2585 | `	ph7_vfs *pVfs;` |
 |      - | 2586 | `	int rc;` |
-|    638 | 2587 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|    746 | 2587 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 2588 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 | 2589 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2590 | `		return PH7_OK;` |
 |      - | 2591 | `	}` |
 |      - | 2592 | `	/* php asks the wrapper that owns the path before anything else` |
 |      - | 2593 | `	 * (php_stream_url_stat_path); the VFS answers only what none owns. */` |
-|    638 | 2594 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_W) ){` |
+|    746 | 2594 | `	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_W) ){` |
 |     17 | 2595 | `		return PH7_OK;` |
 |      - | 2596 | `	}` |
-|    622 | 2597 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    622 | 2598 | `	if( pVfs == 0 \|\| pVfs->xWritable == 0 ){` |
+|    730 | 2597 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|    730 | 2598 | `	if( pVfs == 0 \|\| pVfs->xWritable == 0 ){` |
 |      - | 2599 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 2600 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 2601 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -2615,13 +2615,13 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 2605 | `		return PH7_OK;` |
 |      - | 2606 | `	}` |
 |      - | 2607 | `	/* Point to the desired directory */` |
-|    622 | 2608 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|    730 | 2608 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - | 2609 | `	/* Perform the requested operation */` |
-|    622 | 2610 | `	rc = pVfs->xWritable(zPath);` |
+|    730 | 2610 | `	rc = pVfs->xWritable(zPath);` |
 |      - | 2611 | `	/* IO return value */` |
-|    622 | 2612 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|    622 | 2613 | `	return PH7_OK;` |
-|    321 | 2614 | `}` |
+|    730 | 2612 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|    730 | 2613 | `	return PH7_OK;` |
+|    375 | 2614 | `}` |
 |      - | 2615 | `/*` |
 |      - | 2616 | ` * bool is_executable(string $filename)` |
 |      - | 2617 | ` *  Tells whether the filename is executable.` |
@@ -3016,12 +3016,12 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3006 | ` *  TRUE on success or FALSE on failure.` |
 |      - | 3007 | ` */` |
 |     81 | 3008 | `static int PH7_vfs_putenv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 | 3009 | `{` |
+|      3 | 3009 | `{` |
 |      - | 3010 | `	const char *zName,*zValue;` |
 |      - | 3011 | `	char *zSettings,*zEnd;` |
 |      - | 3012 | `	ph7_vfs *pVfs;` |
 |      - | 3013 | `	int iLen,rc;` |
-|     85 | 3014 | `	if( nArg < 1 ){` |
+|     84 | 3014 | `	if( nArg < 1 ){` |
 |      - | 3015 | `		/* Missing argument,return FALSE */` |
 |    ! 0 | 3016 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3017 | `		return PH7_OK;` |
@@ -3029,8 +3029,8 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3019 | `	/* Extract the setting variable. It is NOT required to already BE a string:` |
 |      - | 3020 | ``	 * the declared parameter is `string $assignment`, so php coerces an int or a`` |
 |      - | 3021 | `	 * __toString() object first, where PH7 answered false and did nothing. */` |
-|     85 | 3022 | `	zSettings = (char *)ph7_value_to_string(apArg[0],&iLen);` |
-|     85 | 3023 | `	if( iLen < 1 \|\| zSettings[0] == '=' ){` |
+|     84 | 3022 | `	zSettings = (char *)ph7_value_to_string(apArg[0],&iLen);` |
+|     84 | 3023 | `	if( iLen < 1 \|\| zSettings[0] == '=' ){` |
 |      - | 3024 | `		/* php's whole validity rule: an empty assignment, or one with no name in` |
 |      - | 3025 | `		 * front of the '='. Everything else is accepted. */` |
 |      9 | 3026 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
@@ -3039,18 +3039,18 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3029 | `	/* Parse the setting. php looks for the '=' with strchr(), so an embedded NUL` |
 |      - | 3030 | `	 * ENDS the search: putenv("FO\0O=BAR") finds no '=' at all and removes the` |
 |      - | 3031 | `	 * variable named "FO" instead of setting one. */` |
-|     77 | 3032 | `	zEnd = &zSettings[iLen];` |
-|     77 | 3033 | `	zValue = 0;` |
-|     77 | 3034 | `	zName = zSettings;` |
-|    685 | 3035 | `	while( zSettings < zEnd && zSettings[0] != 0 ){` |
-|    661 | 3036 | `		if( zSettings[0] == '=' ){` |
+|     76 | 3032 | `	zEnd = &zSettings[iLen];` |
+|     76 | 3033 | `	zValue = 0;` |
+|     76 | 3034 | `	zName = zSettings;` |
+|    684 | 3035 | `	while( zSettings < zEnd && zSettings[0] != 0 ){` |
+|    660 | 3036 | `		if( zSettings[0] == '=' ){` |
 |      - | 3037 | `			/* Null terminate the name */` |
-|     53 | 3038 | `			zSettings[0] = 0;` |
-|     53 | 3039 | `			zValue = &zSettings[1];` |
-|     53 | 3040 | `			break;` |
+|     52 | 3038 | `			zSettings[0] = 0;` |
+|     52 | 3039 | `			zValue = &zSettings[1];` |
+|     52 | 3040 | `			break;` |
 |      - | 3041 | `		}` |
-|    612 | 3042 | `		zSettings++;` |
-|      4 | 3043 | `	}` |
+|    611 | 3042 | `		zSettings++;` |
+|      3 | 3043 | `	}` |
 |      - | 3044 | ``	/* A missing '=' is not invalid syntax: `putenv("NAME")` REMOVES the variable,`` |
 |      - | 3045 | `	 * which is the documented way to unset one, and PH7 read it as a failure and` |
 |      - | 3046 | `	 * left the old value in place. An empty VALUE is a value too` |
@@ -3060,8 +3060,8 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3050 | `	 * the pair into $_ENV as well, so a script could read back through $_ENV a` |
 |      - | 3051 | `	 * variable php only exposes through getenv(). */` |
 |      - | 3052 | `	/* Point to the underlying vfs */` |
-|     77 | 3053 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|     77 | 3054 | `	if( pVfs == 0 \|\| pVfs->xSetenv == 0 ){` |
+|     76 | 3053 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|     76 | 3054 | `	if( pVfs == 0 \|\| pVfs->xSetenv == 0 ){` |
 |      - | 3055 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 | 3056 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 3057 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -3076,16 +3076,16 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3066 | `	/* Perform the requested operation. A NULL value means REMOVE, and php reports` |
 |      - | 3067 | `	 * TRUE for that whether or not the variable was there (or nameable) at all --` |
 |      - | 3068 | `	 * only a failed SET is false. */` |
-|     77 | 3069 | `	rc = pVfs->xSetenv(zName,zValue);` |
-|     77 | 3070 | `	ph7_result_bool(pCtx,zValue == 0 \|\| rc == PH7_OK );` |
-|     77 | 3071 | `	if( zValue ){` |
+|     76 | 3069 | `	rc = pVfs->xSetenv(zName,zValue);` |
+|     76 | 3070 | `	ph7_result_bool(pCtx,zValue == 0 \|\| rc == PH7_OK );` |
+|     76 | 3071 | `	if( zValue ){` |
 |      - | 3072 | `		/* Put back the '=' the name was terminated on. Without one, zSettings` |
 |      - | 3073 | `		 * stopped on the terminator or on an embedded NUL, neither of which this` |
 |      - | 3074 | `		 * routine wrote. */` |
-|     53 | 3075 | `		zSettings[0] = '=';` |
+|     52 | 3075 | `		zSettings[0] = '=';` |
 |     17 | 3076 | `	}` |
-|     77 | 3077 | `	return PH7_OK;` |
-|     37 | 3078 | `}` |
+|     76 | 3077 | `	return PH7_OK;` |
+|     36 | 3078 | `}` |
 |      - | 3079 | `/*` |
 |      - | 3080 | ` * bool touch(string $filename[,int64 $time = time()[,int64 $atime]])` |
 |      - | 3081 | ` *  Sets access and modification time of file.` |
@@ -3311,22 +3311,22 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3301 | ` * Return` |
 |      - | 3302 | ` *  The base name of the given path.` |
 |      - | 3303 | ` */` |
-|    232 | 3304 | `static int PH7_builtin_basename(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    332 | 3304 | `static int PH7_builtin_basename(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 3305 | `{` |
 |      - | 3306 | `	const char *zPath,*zBase;` |
 |      - | 3307 | `	int iLen,nBase;` |
-|    237 | 3308 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|    337 | 3308 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 3309 | `		/* Missing/Invalid argument,return the empty string */` |
 |    ! 0 | 3310 | `		ph7_result_string(pCtx,"",0);` |
 |    ! 0 | 3311 | `		return PH7_OK;` |
 |      - | 3312 | `	}` |
 |      - | 3313 | `	/* Point to the target path */` |
-|    237 | 3314 | `	zPath = ph7_value_to_string(apArg[0],&iLen);` |
+|    337 | 3314 | `	zPath = ph7_value_to_string(apArg[0],&iLen);` |
 |      - | 3315 | `	/* php_basename, shared with pathinfo(): the hand-rolled walk this used to carry` |
 |      - | 3316 | `	 * kept a leading separator on a single-component path (basename("/a") answered` |
 |      - | 3317 | `	 * "/a", basename("/.") answered "/.") because it stopped one byte short. */` |
-|    237 | 3318 | `	zBase = PH7_ExtractBaseName(zPath,iLen,&nBase);` |
-|    237 | 3319 | `	if( nArg > 1 && ph7_value_is_string(apArg[1]) ){` |
+|    337 | 3318 | `	zBase = PH7_ExtractBaseName(zPath,iLen,&nBase);` |
+|    337 | 3319 | `	if( nArg > 1 && ph7_value_is_string(apArg[1]) ){` |
 |      - | 3320 | `		const char *zSuffix;` |
 |      - | 3321 | `		int nSuffix;` |
 |      - | 3322 | `		/* Strip suffix — php leaves the basename alone when it IS the suffix */` |
@@ -3337,9 +3337,9 @@ Coverage: 1948/2421 lines (80.46%)
 |      2 | 3327 | `		}` |
 |      2 | 3328 | `	}` |
 |      - | 3329 | `	/* Store the basename */` |
-|    237 | 3330 | `	ph7_result_string(pCtx,zBase,nBase);` |
-|    237 | 3331 | `	return PH7_OK;` |
-|    121 | 3332 | `}` |
+|    337 | 3330 | `	ph7_result_string(pCtx,zBase,nBase);` |
+|    337 | 3331 | `	return PH7_OK;` |
+|    171 | 3332 | `}` |
 |      - | 3333 | `/*` |
 |      - | 3334 | ` * value pathinfo(string $path [,int $options = PATHINFO_DIRNAME \| PATHINFO_BASENAME \| PATHINFO_EXTENSION \| PATHINFO_FILENAME ])` |
 |      - | 3335 | ` *  Returns information about a file path.` |
@@ -3383,47 +3383,47 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3373 | ` * relative-path rules ("file.txt" -> ".", "/var/www/" -> "/var" + "www") cannot` |
 |      - | 3374 | ` * drift between the two builtins and this one.` |
 |      - | 3375 | ` */` |
-|  19670 | 3376 | `static sxi32 ExtractPathInfo(const char *zPath,int nByte,path_info *pOut)` |
+|  20842 | 3376 | `static sxi32 ExtractPathInfo(const char *zPath,int nByte,path_info *pOut)` |
 |      5 | 3377 | `{` |
 |      - | 3378 | `	const char *zBase,*zDir,*zDot;` |
 |      - | 3379 | `	int nBase,nDir,i;` |
 |      - | 3380 | `	/* Zero the structure */` |
-|  19675 | 3381 | `	SyZero(pOut,sizeof(path_info));` |
-|  19675 | 3382 | `	zDir = PH7_ExtractDirName(zPath,nByte,&nDir);` |
-|  19675 | 3383 | `	if( nDir > 0 ){` |
-|  19671 | 3384 | `		SyStringInitFromBuf(&pOut->sDir,zDir,nDir);` |
-|  19671 | 3385 | `		pOut->iPresent \|= PH7_PATHINFO_DIRNAME;` |
-|   9833 | 3386 | `	}` |
-|  19675 | 3387 | `	zBase = PH7_ExtractBaseName(zPath,nByte,&nBase);` |
-|  19675 | 3388 | `	SyStringInitFromBuf(&pOut->sBasename,zBase,nBase);` |
-|  19675 | 3389 | `	pOut->iPresent \|= PH7_PATHINFO_BASENAME\|PH7_PATHINFO_FILENAME;` |
+|  20847 | 3381 | `	SyZero(pOut,sizeof(path_info));` |
+|  20847 | 3382 | `	zDir = PH7_ExtractDirName(zPath,nByte,&nDir);` |
+|  20847 | 3383 | `	if( nDir > 0 ){` |
+|  20843 | 3384 | `		SyStringInitFromBuf(&pOut->sDir,zDir,nDir);` |
+|  20843 | 3385 | `		pOut->iPresent \|= PH7_PATHINFO_DIRNAME;` |
+|  10419 | 3386 | `	}` |
+|  20847 | 3387 | `	zBase = PH7_ExtractBaseName(zPath,nByte,&nBase);` |
+|  20847 | 3388 | `	SyStringInitFromBuf(&pOut->sBasename,zBase,nBase);` |
+|  20847 | 3389 | `	pOut->iPresent \|= PH7_PATHINFO_BASENAME\|PH7_PATHINFO_FILENAME;` |
 |      - | 3390 | `	/* Last dot anywhere in the basename splits filename from extension */` |
-|  19675 | 3391 | `	zDot = 0;` |
-|  98271 | 3392 | `	for( i = nBase ; i > 0 ; --i ){` |
-|  98249 | 3393 | `		if( zBase[i - 1] == '.' ){` |
-|  19653 | 3394 | `			zDot = &zBase[i - 1];` |
-|  19653 | 3395 | `			break;` |
+|  20847 | 3391 | `	zDot = 0;` |
+| 104131 | 3392 | `	for( i = nBase ; i > 0 ; --i ){` |
+| 104109 | 3393 | `		if( zBase[i - 1] == '.' ){` |
+|  20825 | 3394 | `			zDot = &zBase[i - 1];` |
+|  20825 | 3395 | `			break;` |
 |      - | 3396 | `		}` |
-|  39303 | 3397 | `	}` |
-|  19675 | 3398 | `	if( zDot ){` |
-|  19653 | 3399 | `		SyStringInitFromBuf(&pOut->sExtension,zDot + 1,(int)(&zBase[nBase] - (zDot + 1)));` |
-|  19653 | 3400 | `		pOut->iPresent \|= PH7_PATHINFO_EXTENSION;` |
-|  19653 | 3401 | `		SyStringInitFromBuf(&pOut->sFilename,zBase,(int)(zDot - zBase));` |
-|   9829 | 3402 | `	}else{` |
+|  41647 | 3397 | `	}` |
+|  20847 | 3398 | `	if( zDot ){` |
+|  20825 | 3399 | `		SyStringInitFromBuf(&pOut->sExtension,zDot + 1,(int)(&zBase[nBase] - (zDot + 1)));` |
+|  20825 | 3400 | `		pOut->iPresent \|= PH7_PATHINFO_EXTENSION;` |
+|  20825 | 3401 | `		SyStringInitFromBuf(&pOut->sFilename,zBase,(int)(zDot - zBase));` |
+|  10415 | 3402 | `	}else{` |
 |     23 | 3403 | `		SyStringInitFromBuf(&pOut->sFilename,zBase,nBase);` |
 |      - | 3404 | `	}` |
-|  19675 | 3405 | `	return SXRET_OK;` |
+|  20847 | 3405 | `	return SXRET_OK;` |
 |      5 | 3406 | `}` |
 |      - | 3407 | `/*` |
 |      - | 3408 | ` * value pathinfo(string $path [,int $options = PATHINFO_DIRNAME \| PATHINFO_BASENAME \| PATHINFO_EXTENSION \| PATHINFO_FILENAME ])` |
 |      - | 3409 | ` *  See block comment above.` |
 |      - | 3410 | ` */` |
-|  19670 | 3411 | `static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  20842 | 3411 | `static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 3412 | `{` |
 |      - | 3413 | `	const char *zPath;` |
 |      - | 3414 | `	path_info sInfo;` |
 |      - | 3415 | `	int iLen;` |
-|  19675 | 3416 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
+|  20847 | 3416 | `	if( nArg < 1 \|\| !VfsPathArgUsable(apArg[0]) ){` |
 |      - | 3417 | `		/* Missing/Invalid argument,return the empty string */` |
 |    ! 0 | 3418 | `		ph7_result_string(pCtx,"",0);` |
 |    ! 0 | 3419 | `		return PH7_OK;` |
@@ -3431,14 +3431,14 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3421 | `	/* Point to the target path. The EMPTY path is not a special case: php still` |
 |      - | 3422 | ``	 * answers with the array `["basename" => "", "filename" => ""]` (and "" for a`` |
 |      - | 3423 | `	 * scalar request), where PH7 short-circuited to "" and returned the wrong TYPE. */` |
-|  19675 | 3424 | `	zPath = ph7_value_to_string(apArg[0],&iLen);` |
+|  20847 | 3424 | `	zPath = ph7_value_to_string(apArg[0],&iLen);` |
 |      - | 3425 | `	/* Extract path info */` |
-|  19675 | 3426 | `	ExtractPathInfo(zPath,iLen,&sInfo);` |
+|  20847 | 3426 | `	ExtractPathInfo(zPath,iLen,&sInfo);` |
 |      - | 3427 | ``	/* Read the mask at 64-bit width: ph7_value_to_int() truncates to `int`, so a`` |
 |      - | 3428 | `	 * flags value congruent to PATHINFO_ALL mod 2^32 (4294967311, -4294967281 …)` |
 |      - | 3429 | `	 * would take the ARRAY branch and answer with the wrong TYPE. */` |
-|  19670 | 3430 | `	if( nArg > 1 && ph7_value_is_int(apArg[1])` |
-|  29487 | 3431 | `	 && ph7_value_to_int64(apArg[1]) != (ph7_int64)PH7_PATHINFO_ALL ){` |
+|  20842 | 3430 | `	if( nArg > 1 && ph7_value_is_int(apArg[1])` |
+|  31245 | 3431 | `	 && ph7_value_to_int64(apArg[1]) != (ph7_int64)PH7_PATHINFO_ALL ){` |
 |      - | 3432 | `		/* $flags is a BITMASK, not an enum: php assembles the requested components in` |
 |      - | 3433 | `		 * the fixed order below and, for anything other than PATHINFO_ALL, hands back` |
 |      - | 3434 | `		 * the FIRST one it EMITTED (zend_hash_get_current_data on the fresh array).` |
@@ -3448,26 +3448,26 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3438 | `		 * switched on the whole value, so it read a two-flag mask as a different single` |
 |      - | 3439 | `		 * component and answered "" for everything else. Emission is iPresent, NOT` |
 |      - | 3440 | `		 * "non-empty": an emitted-but-empty component ends the search with "". */` |
-|  19657 | 3441 | `		ph7_int64 nComp = ph7_value_to_int64(apArg[1]);` |
+|  20829 | 3441 | `		ph7_int64 nComp = ph7_value_to_int64(apArg[1]);` |
 |      - | 3442 | `		static const int aBit[4] = {` |
 |      - | 3443 | `			PH7_PATHINFO_DIRNAME,PH7_PATHINFO_BASENAME,` |
 |      - | 3444 | `			PH7_PATHINFO_EXTENSION,PH7_PATHINFO_FILENAME` |
 |      - | 3445 | `		};` |
 |      - | 3446 | `		SyString *apComp[4];` |
 |      - | 3447 | `		int i;` |
-|  19657 | 3448 | `		apComp[0] = &sInfo.sDir;` |
-|  19657 | 3449 | `		apComp[1] = &sInfo.sBasename;` |
-|  19657 | 3450 | `		apComp[2] = &sInfo.sExtension;` |
-|  19657 | 3451 | `		apComp[3] = &sInfo.sFilename;` |
+|  20829 | 3448 | `		apComp[0] = &sInfo.sDir;` |
+|  20829 | 3449 | `		apComp[1] = &sInfo.sBasename;` |
+|  20829 | 3450 | `		apComp[2] = &sInfo.sExtension;` |
+|  20829 | 3451 | `		apComp[3] = &sInfo.sFilename;` |
 |      - | 3452 | `		/* Expand the empty string unless a requested component is emitted */` |
-|  19657 | 3453 | `		ph7_result_string(pCtx,"",0);` |
-|  68721 | 3454 | `		for( i = 0 ; i < 4 ; ++i ){` |
-|  68713 | 3455 | `			if( (nComp & aBit[i]) == aBit[i] && (sInfo.iPresent & aBit[i]) ){` |
-|  19649 | 3456 | `				ph7_result_string(pCtx,apComp[i]->zString,(int)apComp[i]->nByte);` |
-|  19649 | 3457 | `				break;` |
+|  20829 | 3453 | `		ph7_result_string(pCtx,"",0);` |
+|  72823 | 3454 | `		for( i = 0 ; i < 4 ; ++i ){` |
+|  72815 | 3455 | `			if( (nComp & aBit[i]) == aBit[i] && (sInfo.iPresent & aBit[i]) ){` |
+|  20821 | 3456 | `				ph7_result_string(pCtx,apComp[i]->zString,(int)apComp[i]->nByte);` |
+|  20821 | 3457 | `				break;` |
 |      - | 3458 | `			}` |
-|  24537 | 3459 | `		}` |
-|   9831 | 3460 | `	}else{` |
+|  26002 | 3459 | `		}` |
+|  10417 | 3460 | `	}else{` |
 |      - | 3461 | `		/* Return an associative array */` |
 |      - | 3462 | `		ph7_value *pArray,*pValue;` |
 |     19 | 3463 | `		pArray = ph7_context_new_array(pCtx);` |
@@ -3506,8 +3506,8 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3496 | `		 * automatically as soon we return from this foreign function.` |
 |      - | 3497 | `		 */` |
 |      - | 3498 | `	}` |
-|  19675 | 3499 | `	return PH7_OK;` |
-|   9840 | 3500 | `}` |
+|  20847 | 3499 | `	return PH7_OK;` |
+|  10426 | 3500 | `}` |
 |      - | 3501 | `/* SPDX-SnippetBegin */` |
 |      - | 3502 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
 |      - | 3503 | `/* SPDX-License-Identifier: blessing */` |
@@ -3620,32 +3620,32 @@ Coverage: 1948/2421 lines (80.46%)
 |      5 | 3610 | `		default: return SyisHex(c);` |
 |      - | 3611 | `	}` |
 |     47 | 3612 | `}` |
-|   2760 | 3613 | `static int patternCompare(` |
+|   2738 | 3613 | `static int patternCompare(` |
 |      - | 3614 | `  const u8 *zPattern,              /* The glob pattern */` |
 |      - | 3615 | `  const u8 *zString,               /* The string to compare against the glob */` |
 |      - | 3616 | `  const int esc,                    /* The escape character */` |
 |      - | 3617 | `  int noCase,` |
 |      - | 3618 | ``  int bCaret                        /* `[^...]` inverts (fnmatch) or is a literal `^` (glob) */`` |
-|      4 | 3619 | `){` |
+|      5 | 3619 | `){` |
 |      - | 3620 | `  int c, c2, cLow;` |
 |      - | 3621 | `  int invert;` |
 |      - | 3622 | `  int seen;` |
-|   2764 | 3623 | `  u8 matchOne = '?';` |
-|   2764 | 3624 | `  u8 matchAll = '*';` |
-|   2764 | 3625 | `  u8 matchSet = '[';` |
-|   2764 | 3626 | `  int prevEscape = 0;     /* True if the previous character was 'escape' */` |
+|   2743 | 3623 | `  u8 matchOne = '?';` |
+|   2743 | 3624 | `  u8 matchAll = '*';` |
+|   2743 | 3625 | `  u8 matchSet = '[';` |
+|   2743 | 3626 | `  int prevEscape = 0;     /* True if the previous character was 'escape' */` |
 |      - | 3627 |  |
-|   2764 | 3628 | `  if( !zPattern \|\| !zString ) return 0;` |
-|   3867 | 3629 | `  while( (c = PH7_Utf8Read(zPattern,0,&zPattern))!=0 ){` |
-|   3475 | 3630 | `    if( !prevEscape && c==matchAll ){` |
+|   2743 | 3628 | `  if( !zPattern \|\| !zString ) return 0;` |
+|   3845 | 3629 | `  while( (c = PH7_Utf8Read(zPattern,0,&zPattern))!=0 ){` |
+|   3453 | 3630 | `    if( !prevEscape && c==matchAll ){` |
 |   2936 | 3631 | `      while( (c=PH7_Utf8Read(zPattern,0,&zPattern)) == matchAll` |
-|   1472 | 3632 | `               \|\| c == matchOne ){` |
+|   1473 | 3632 | `               \|\| c == matchOne ){` |
 |    ! 0 | 3633 | `        if( c==matchOne && PH7_Utf8Read(zString, 0, &zString)==0 ){` |
 |    ! 0 | 3634 | `          return 0;` |
 |      - | 3635 | `        }` |
 |    ! 0 | 3636 | `      }` |
-|   1472 | 3637 | `      if( c==0 ){` |
-|    932 | 3638 | `        return 1;` |
+|   1473 | 3637 | `      if( c==0 ){` |
+|    933 | 3638 | `        return 1;` |
 |    542 | 3639 | `      }else if( c==esc ){` |
 |    ! 0 | 3640 | `        c = PH7_Utf8Read(zPattern, 0, &zPattern);` |
 |    ! 0 | 3641 | `        if( c==0 ){` |
@@ -3680,11 +3680,11 @@ Coverage: 1948/2421 lines (80.46%)
 |    270 | 3670 | `		if( patternCompare(zPattern,zString,esc,noCase,bCaret) ) return 1;` |
 |      2 | 3671 | `      }` |
 |    ! 0 | 3672 | `      return 0;` |
-|   2006 | 3673 | `    }else if( !prevEscape && c==matchOne ){` |
+|   1983 | 3673 | `    }else if( !prevEscape && c==matchOne ){` |
 |     25 | 3674 | `      if( PH7_Utf8Read(zString, 0, &zString)==0 ){` |
 |    ! 0 | 3675 | `        return 0;` |
 |      1 | 3676 | `      }` |
-|   1994 | 3677 | `    }else if( c==matchSet ){` |
+|   1971 | 3677 | `    }else if( c==matchSet ){` |
 |    459 | 3678 | `      int prior_c = 0;` |
 |      - | 3679 | `      /* SQLite asserts here that its GLOB has no escape character; the guard` |
 |      - | 3680 | `       * that replaced the assert reads the condition BACKWARDS, so a set` |
@@ -3760,37 +3760,37 @@ Coverage: 1948/2421 lines (80.46%)
 |    459 | 3750 | `      if( c2==0 \|\| (seen ^ invert)==0 ){` |
 |    203 | 3751 | `        return 0;` |
 |      1 | 3752 | `      }` |
-|   1652 | 3753 | `    }else if( esc==c && !prevEscape ){` |
+|   1629 | 3753 | `    }else if( esc==c && !prevEscape ){` |
 |      9 | 3754 | `      prevEscape = 1;` |
 |      5 | 3755 | `    }else{` |
-|   1516 | 3756 | `      c2 = PH7_Utf8Read(zString, 0, &zString);` |
-|   1516 | 3757 | `      if( noCase ){` |
+|   1493 | 3756 | `      c2 = PH7_Utf8Read(zString, 0, &zString);` |
+|   1493 | 3757 | `      if( noCase ){` |
 |     17 | 3758 | `        GlogUpperToLower(c);` |
 |     17 | 3759 | `        GlogUpperToLower(c2);` |
 |      8 | 3760 | `      }` |
-|   1516 | 3761 | `      if( c!=c2 ){` |
-|    700 | 3762 | `        return 0;` |
+|   1493 | 3761 | `      if( c!=c2 ){` |
+|    678 | 3762 | `        return 0;` |
 |      - | 3763 | `      }` |
-|    818 | 3764 | `      prevEscape = 0;` |
+|    817 | 3764 | `      prevEscape = 0;` |
 |      - | 3765 | `    }` |
 |      3 | 3766 | `  }` |
 |    394 | 3767 | `  return *zString==0;` |
-|   1437 | 3768 | `}` |
+|   1416 | 3768 | `}` |
 |      - | 3769 | `/* SPDX-SnippetEnd */` |
 |      - | 3770 | `/*` |
 |      - | 3771 | ` * Wrapper around patternCompare() defined above.` |
 |      - | 3772 | ` * See block comment above for more information.` |
 |      - | 3773 | ` */` |
-|   2304 | 3774 | `static int Glob(const unsigned char *zPattern,const unsigned char *zString,int iEsc,` |
+|   2282 | 3774 | `static int Glob(const unsigned char *zPattern,const unsigned char *zString,int iEsc,` |
 |      - | 3775 | `	int CaseCompare,int bCaret)` |
-|      4 | 3776 | `{` |
+|      5 | 3776 | `{` |
 |      - | 3777 | `	int rc;` |
-|   2308 | 3778 | `	if( iEsc < 0 ){` |
+|   2287 | 3778 | `	if( iEsc < 0 ){` |
 |    ! 0 | 3779 | `		iEsc = '\\';` |
 |    ! 0 | 3780 | `	}` |
-|   2308 | 3781 | `	rc = patternCompare(zPattern,zString,iEsc,CaseCompare,bCaret);` |
-|   2308 | 3782 | `	return rc;` |
-|      4 | 3783 | `}` |
+|   2287 | 3781 | `	rc = patternCompare(zPattern,zString,iEsc,CaseCompare,bCaret);` |
+|   2287 | 3782 | `	return rc;` |
+|      5 | 3783 | `}` |
 |      - | 3784 | `/*` |
 |      - | 3785 | ` * bool fnmatch(string $pattern,string $string[,int $flags = 0 ])` |
 |      - | 3786 | ` *  Match filename against a pattern.` |
@@ -3853,25 +3853,25 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 3843 | ` * Note that this a symisc eXtension.` |
 |      - | 3844 | ` */` |
 |   1554 | 3845 | `static int PH7_builtin_strglob(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 | 3846 | `{` |
+|      5 | 3846 | `{` |
 |      - | 3847 | `	const char *zString,*zPattern;` |
-|   1558 | 3848 | `	int iEsc = '\\';` |
+|   1559 | 3848 | `	int iEsc = '\\';` |
 |      - | 3849 | `	int rc;` |
-|   1558 | 3850 | `	if( nArg < 2 \|\| !VfsPathArgUsable(apArg[0]) \|\| !ph7_value_is_string(apArg[1]) ){` |
+|   1559 | 3850 | `	if( nArg < 2 \|\| !VfsPathArgUsable(apArg[0]) \|\| !ph7_value_is_string(apArg[1]) ){` |
 |      - | 3851 | `		/* Missing/Invalid arguments,return FALSE */` |
 |    ! 0 | 3852 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3853 | `		return PH7_OK;` |
 |      - | 3854 | `	}` |
 |      - | 3855 | `	/* Extract the pattern and the string */` |
-|   1558 | 3856 | `	zPattern  = ph7_value_to_string(apArg[0],0);` |
-|   1558 | 3857 | `	zString = ph7_value_to_string(apArg[1],0);` |
+|   1559 | 3856 | `	zPattern  = ph7_value_to_string(apArg[0],0);` |
+|   1559 | 3857 | `	zString = ph7_value_to_string(apArg[1],0);` |
 |      - | 3858 | ``	/* Go globbing, with glob(3)'s set rules: only `!` inverts, and a `^` right`` |
 |      - | 3859 | ``	 * after the `[` is an ordinary member of the set. */`` |
-|   1558 | 3860 | `	rc = Glob((const unsigned char *)zPattern,(const unsigned char *)zString,iEsc,0,FALSE);` |
+|   1559 | 3860 | `	rc = Glob((const unsigned char *)zPattern,(const unsigned char *)zString,iEsc,0,FALSE);` |
 |      - | 3861 | `	/* Globbing result */` |
-|   1558 | 3862 | `	ph7_result_bool(pCtx,rc);` |
-|   1558 | 3863 | `	return PH7_OK;` |
-|    779 | 3864 | `}` |
+|   1559 | 3862 | `	ph7_result_bool(pCtx,rc);` |
+|   1559 | 3863 | `	return PH7_OK;` |
+|    780 | 3864 | `}` |
 |      - | 3865 | `#ifndef PH7_DISABLE_DISK_IO` |
 |      - | 3866 | `/* Every buffer below is one path, and php's own limit for one is PATH_MAX; the` |
 |      - | 3867 | ` * SPL directory opener already refuses a longer one, and a pattern past it can` |
@@ -4065,26 +4065,26 @@ Coverage: 1948/2421 lines (80.46%)
 |     81 | 4055 | `	VmInitCallContext(&sCtx,pVm,0,&sEntry,0);` |
 |    479 | 4056 | `	for(;;){` |
 |      - | 4057 | `		const char *zName;` |
-|    873 | 4058 | `		int nName = 0;` |
-|    873 | 4059 | `		ph7_value_reset_string_cursor(&sEntry);` |
-|    873 | 4060 | `		if( pStream->xReadDir(pHandle,&sCtx) != PH7_OK ){` |
+|    851 | 4058 | `		int nName = 0;` |
+|    851 | 4059 | `		ph7_value_reset_string_cursor(&sEntry);` |
+|    851 | 4060 | `		if( pStream->xReadDir(pHandle,&sCtx) != PH7_OK ){` |
 |     81 | 4061 | `			break;` |
 |      - | 4062 | `		}` |
-|    793 | 4063 | `		zName = ph7_value_to_string(&sEntry,&nName);` |
-|    792 | 4064 | `		if( nName < 1 \|\| nName >= (int)sizeof(zEnt)` |
-|    793 | 4065 | `		 \|\| nPrefix + nName >= (int)sizeof(zEnt) ){` |
+|    771 | 4063 | `		zName = ph7_value_to_string(&sEntry,&nName);` |
+|    770 | 4064 | `		if( nName < 1 \|\| nName >= (int)sizeof(zEnt)` |
+|    771 | 4065 | `		 \|\| nPrefix + nName >= (int)sizeof(zEnt) ){` |
 |    ! 0 | 4066 | `			continue;` |
 |      - | 4067 | `		}` |
-|    793 | 4068 | `		SyMemcpy(zName,zEnt,(sxu32)nName);` |
-|    793 | 4069 | `		zEnt[nName] = 0;` |
+|    771 | 4068 | `		SyMemcpy(zName,zEnt,(sxu32)nName);` |
+|    771 | 4069 | `		zEnt[nName] = 0;` |
 |      - | 4070 | `		/* php's FNM_PERIOD: a leading dot is matched only by a pattern that` |
 |      - | 4071 | ``		 * spells one, which is what keeps `.`, `..` and every hidden name out`` |
 |      - | 4072 | ``		 * of an ordinary `*`. */`` |
-|    793 | 4073 | `		if( zEnt[0] == '.' && (nSeg < 1 \|\| zSegBuf[0] != '.') ){` |
+|    771 | 4073 | `		if( zEnt[0] == '.' && (nSeg < 1 \|\| zSegBuf[0] != '.') ){` |
 |    201 | 4074 | `			continue;` |
 |      - | 4075 | `		}` |
-|    593 | 4076 | `		if( !Glob((const unsigned char *)zSegBuf,(const unsigned char *)zEnt,'\\',0,FALSE) ){` |
-|    381 | 4077 | `			continue;` |
+|    571 | 4076 | `		if( !Glob((const unsigned char *)zSegBuf,(const unsigned char *)zEnt,'\\',0,FALSE) ){` |
+|    359 | 4077 | `			continue;` |
 |      - | 4078 | `		}` |
 |    213 | 4079 | `		if( bOnlyDir ){` |
 |      - | 4080 | `			/* GLOB_ONLYDIR, which only the trailing-slash branch below asks` |
@@ -4606,14 +4606,14 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 4596 | ` * Return` |
 |      - | 4597 | ` *  Returns the path of the temporary directory.` |
 |      - | 4598 | ` */` |
-|   1704 | 4599 | `static int PH7_vfs_sys_get_temp_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   1938 | 4599 | `static int PH7_vfs_sys_get_temp_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 4600 | `{` |
 |      - | 4601 | `	ph7_vfs *pVfs;` |
 |      - | 4602 | `	/* Set the empty string as the default return value */` |
-|   1709 | 4603 | `	ph7_result_string(pCtx,"",0);` |
+|   1943 | 4603 | `	ph7_result_string(pCtx,"",0);` |
 |      - | 4604 | `	/* Point to the underlying vfs */` |
-|   1709 | 4605 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|   1709 | 4606 | `	if( pVfs == 0 \|\| pVfs->xTempDir == 0 ){` |
+|   1943 | 4605 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|   1943 | 4606 | `	if( pVfs == 0 \|\| pVfs->xTempDir == 0 ){` |
 |    ! 0 | 4607 | `		SXUNUSED(nArg); /* cc warning */` |
 |    ! 0 | 4608 | `		SXUNUSED(apArg);` |
 |      - | 4609 | `		/* IO routine not implemented,return "" */` |
@@ -4624,9 +4624,9 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 4614 | `		return PH7_OK;` |
 |      - | 4615 | `	}` |
 |      - | 4616 | `	/* Perform the requested operation */` |
-|   1709 | 4617 | `	pVfs->xTempDir(pCtx);` |
-|   1709 | 4618 | `	return PH7_OK;` |
-|    844 | 4619 | `}` |
+|   1943 | 4617 | `	pVfs->xTempDir(pCtx);` |
+|   1943 | 4618 | `	return PH7_OK;` |
+|    961 | 4619 | `}` |
 |      - | 4620 | `/*` |
 |      - | 4621 | ` * string get_current_user()` |
 |      - | 4622 | ` *  Returns the name of the current working user.` |
@@ -4664,13 +4664,13 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 4654 | ` * Return` |
 |      - | 4655 | ` *  Returns the process ID.` |
 |      - | 4656 | ` */` |
-|    476 | 4657 | `static int PH7_vfs_getmypid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    490 | 4657 | `static int PH7_vfs_getmypid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 4658 | `{` |
 |      - | 4659 | `	ph7_int64 nProcessId;` |
 |      - | 4660 | `	ph7_vfs *pVfs;` |
 |      - | 4661 | `	/* Point to the underlying vfs */` |
-|    481 | 4662 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    481 | 4663 | `	if( pVfs == 0 \|\| pVfs->xProcessId == 0 ){` |
+|    495 | 4662 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|    495 | 4663 | `	if( pVfs == 0 \|\| pVfs->xProcessId == 0 ){` |
 |    ! 0 | 4664 | `		SXUNUSED(nArg); /* cc warning */` |
 |    ! 0 | 4665 | `		SXUNUSED(apArg);` |
 |      - | 4666 | `		/* IO routine not implemented,return -1 */` |
@@ -4682,11 +4682,11 @@ Coverage: 1948/2421 lines (80.46%)
 |    ! 0 | 4672 | `		return PH7_OK;` |
 |      - | 4673 | `	}` |
 |      - | 4674 | `	/* Perform the requested operation */` |
-|    481 | 4675 | `	nProcessId = (ph7_int64)pVfs->xProcessId();` |
+|    495 | 4675 | `	nProcessId = (ph7_int64)pVfs->xProcessId();` |
 |      - | 4676 | `	/* Set the result */` |
-|    481 | 4677 | `	ph7_result_int64(pCtx,nProcessId);` |
-|    481 | 4678 | `	return PH7_OK;` |
-|    242 | 4679 | `}` |
+|    495 | 4677 | `	ph7_result_int64(pCtx,nProcessId);` |
+|    495 | 4678 | `	return PH7_OK;` |
+|    249 | 4679 | `}` |
 |      - | 4680 | `/*` |
 |      - | 4681 | ` * int getmyuid()` |
 |      - | 4682 | ` *  Get user ID.` |
@@ -5024,7 +5024,7 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 5014 | ` *  If the engine is compiled with the PH7_DISABLE_DISK_IO/PH7_DISABLE_BUILTIN_FUNC` |
 |      - | 5015 | ` *  directives defined then this function return the null_vfs instead.` |
 |      - | 5016 | ` */` |
-|   7935 | 5017 | `PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void)` |
+|   8455 | 5017 | `PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void)` |
 |      5 | 5018 | `{` |
 |      - | 5019 | `#if !defined(PH7_DISABLE_BUILTIN_FUNC) \|\| !defined(PH7_DISABLE_DISK_IO)` |
 |      - | 5020 | `#ifdef PH7_DISABLE_DISK_IO` |
@@ -5033,7 +5033,7 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 5023 | `#ifdef __WINNT__` |
 |      5 | 5024 | `	return &sWinVfs;` |
 |      - | 5025 | `#elif defined(__UNIXES__)` |
-|   7935 | 5026 | `	return &sUnixVfs;` |
+|   8455 | 5026 | `	return &sUnixVfs;` |
 |      - | 5027 | `#else` |
 |      - | 5028 | `	return &null_vfs;` |
 |      - | 5029 | `#endif /* __WINNT__/__UNIXES__ */` |
@@ -5049,7 +5049,7 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 5039 | ` *  If the engine is compiled with the PH7_DISABLE_BUILTIN_FUNC directive` |
 |      - | 5040 | ` *  defined then this function is a no-op.` |
 |      - | 5041 | ` */` |
-|   7925 | 5042 | `PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)` |
+|   8445 | 5042 | `PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)` |
 |      5 | 5043 | `{` |
 |      - | 5044 | `	/*` |
 |      - | 5045 | `	 * Disk I/O routines are independent of PH7_DISABLE_BUILTIN_FUNC.` |
@@ -5274,15 +5274,15 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 5264 | `		{"gzpassthru", PH7_builtin_fpassthru }` |
 |      - | 5265 | `#endif /* PH7_ENABLE_ZLIB */` |
 |      - | 5266 | `	};` |
-|   7930 | 5267 | `	const ph7_io_stream *pFileStream = 0;` |
-|   7930 | 5268 | `	sxu32 n = 0;` |
+|   8450 | 5267 | `	const ph7_io_stream *pFileStream = 0;` |
+|   8450 | 5268 | `	sxu32 n = 0;` |
 |      - | 5269 | `	/* Register disk-related functions */` |
-| 443805 | 5270 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVfsDiskFunc) ; ++n ){` |
-| 435880 | 5271 | `		ph7_create_function(&(*pVm),aVfsDiskFunc[n].zName,aVfsDiskFunc[n].xFunc,(void *)pVm->pEngine->pVfs);` |
-| 217640 | 5272 | `	}` |
-| 927230 | 5273 | `	for( n = 0 ; n < SX_ARRAYSIZE(aIOFunc) ; ++n ){` |
-| 919305 | 5274 | `		ph7_create_function(&(*pVm),aIOFunc[n].zName,aIOFunc[n].xFunc,pVm);` |
-| 459017 | 5275 | `	}` |
+| 472925 | 5270 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVfsDiskFunc) ; ++n ){` |
+| 464480 | 5271 | `		ph7_create_function(&(*pVm),aVfsDiskFunc[n].zName,aVfsDiskFunc[n].xFunc,(void *)pVm->pEngine->pVfs);` |
+| 231940 | 5272 | `	}` |
+| 988070 | 5273 | `	for( n = 0 ; n < SX_ARRAYSIZE(aIOFunc) ; ++n ){` |
+| 979625 | 5274 | `		ph7_create_function(&(*pVm),aIOFunc[n].zName,aIOFunc[n].xFunc,pVm);` |
+| 489177 | 5275 | `	}` |
 |      - | 5276 | `#else` |
 |      - | 5277 | `	SXUNUSED(pVm);` |
 |      - | 5278 | `#endif /* PH7_DISABLE_DISK_IO */` |
@@ -5300,11 +5300,11 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 5290 | `		{"strglob",     PH7_builtin_strglob  },` |
 |      - | 5291 | `		{"fnmatch",     PH7_builtin_fnmatch  }` |
 |      - | 5292 | `	};` |
-|  47555 | 5293 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVfsHelperFunc) ; ++n ){` |
-|  39630 | 5294 | `		ph7_create_function(&(*pVm),aVfsHelperFunc[n].zName,aVfsHelperFunc[n].xFunc,pVm);` |
-|  19790 | 5295 | `	}` |
+|  50675 | 5293 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVfsHelperFunc) ; ++n ){` |
+|  42230 | 5294 | `		ph7_create_function(&(*pVm),aVfsHelperFunc[n].zName,aVfsHelperFunc[n].xFunc,pVm);` |
+|  21090 | 5295 | `	}` |
 |      - | 5296 | `	/* The three names a script asks an http:// exchange about. */` |
-|   7930 | 5297 | `	PH7_HttpInstallFuncs(&(*pVm));` |
+|   8450 | 5297 | `	PH7_HttpInstallFuncs(&(*pVm));` |
 |      - | 5298 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |      - | 5299 |  |
 |      - | 5300 | `	/* Install streams if disk I/O is enabled */` |
@@ -5312,49 +5312,49 @@ Coverage: 1948/2421 lines (80.46%)
 |      - | 5302 | `#ifdef __WINNT__` |
 |      5 | 5303 | `	pFileStream = &sWinFileStream;` |
 |      - | 5304 | `#elif defined(__UNIXES__)` |
-|   7925 | 5305 | `	pFileStream = &sUnixFileStream;` |
+|   8445 | 5305 | `	pFileStream = &sUnixFileStream;` |
 |      - | 5306 | `#endif` |
 |      - | 5307 | `	/* Install the php:// stream */` |
-|   7930 | 5308 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);` |
+|   8450 | 5308 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);` |
 |      - | 5309 | `#ifdef PH7_ENABLE_ZLIB` |
 |      - | 5310 | `	/* compress.zlib:// -- the same device gzopen() opens directly. */` |
-|   7930 | 5311 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sZLIB_Stream);` |
+|   8450 | 5311 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sZLIB_Stream);` |
 |      - | 5312 | `#endif` |
 |      - | 5313 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |      - | 5314 | `	/* phar:// -- what an archive's own entries are read through. */` |
-|   7930 | 5315 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHAR_Stream);` |
+|   8450 | 5315 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHAR_Stream);` |
 |      - | 5316 | `#endif` |
-|   7930 | 5317 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);` |
+|   8450 | 5317 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);` |
 |      - | 5318 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |      - | 5319 | `	/* glob:// lives beside the pattern matcher it drives, so it is only in the` |
 |      - | 5320 | `	 * build when that is. */` |
-|   7930 | 5321 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sGLOB_Stream);` |
+|   8450 | 5321 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sGLOB_Stream);` |
 |      - | 5322 | `#endif` |
 |      - | 5323 | `#ifdef PH7_ENABLE_NET` |
-|   7930 | 5324 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sTCP_Stream);` |
+|   8450 | 5324 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sTCP_Stream);` |
 |      - | 5325 | `	/* php's one built-in protocol wrapper. It speaks over the same sockets` |
 |      - | 5326 | `	 * tcp:// hands out, so it is in the build exactly when they are. */` |
-|   7930 | 5327 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sHTTP_Stream);` |
+|   8450 | 5327 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sHTTP_Stream);` |
 |      - | 5328 | `#ifdef PH7_ENABLE_OPENSSL` |
 |      - | 5329 | `	/* ... and the same wrapper over TLS, which php registers exactly when its` |
 |      - | 5330 | `	 * ssl:// transport is in the build. */` |
-|   7930 | 5331 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sHTTPS_Stream);` |
+|   8450 | 5331 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sHTTPS_Stream);` |
 |      - | 5332 | `#endif` |
 |      - | 5333 | `#endif` |
-|   7930 | 5334 | `	if( pFileStream ){` |
+|   8450 | 5334 | `	if( pFileStream ){` |
 |      - | 5335 | `		/* Install the file:// stream */` |
-|   7930 | 5336 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,pFileStream);` |
-|   3957 | 5337 | `	}` |
+|   8450 | 5336 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,pFileStream);` |
+|   4217 | 5337 | `	}` |
 |      - | 5338 | `#if defined(PH7_ENABLE_ZLIB) && !defined(PH7_DISABLE_BUILTIN_FUNC)` |
 |      - | 5339 | `	/* zip:// -- an OPENER and nothing else, exactly as php's is: no url_stat,` |
 |      - | 5340 | ``	 * so `file_exists('zip://…')` is false, and no directory door, so an`` |
 |      - | 5341 | `	 * archive can only be listed through ZipArchive. It goes on LAST because` |
 |      - | 5342 | ``	 * php registers it last and `stream_get_wrappers()` answers in that`` |
 |      - | 5343 | `	 * order. */` |
-|   7930 | 5344 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sZIP_Stream);` |
+|   8450 | 5344 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sZIP_Stream);` |
 |      - | 5345 | `#endif` |
 |      - | 5346 | `#endif /* PH7_DISABLE_DISK_IO */` |
 |      - | 5347 |  |
-|   7930 | 5348 | `	return SXRET_OK;` |
+|   8450 | 5348 | `	return SXRET_OK;` |
 |      5 | 5349 | `}` |
 |      - | 5350 |  |

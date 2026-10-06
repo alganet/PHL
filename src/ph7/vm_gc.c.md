@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 406/423 lines (95.98%)
+Coverage: 408/423 lines (96.45%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -93,32 +93,32 @@ Coverage: 406/423 lines (95.98%)
 |        - |   83 | ` * pNode is the node the walk arrived through, or 0 for an object property (which` |
 |        - |   84 | ` * files no row of its own, so any node row at all means somebody else holds it).` |
 |        - |   85 | ` */` |
-|  1594871 |   86 | `static int VmGcSlotOwned(ph7_vm *pVm,sxu32 nIdx,ph7_hashmap_node *pNode)` |
+|  2609065 |   86 | `static int VmGcSlotOwned(ph7_vm *pVm,sxu32 nIdx,ph7_hashmap_node *pNode)` |
 |        4 |   87 | `{` |
-|  1594875 |   88 | `	if( nIdx == SXU32_HIGH ){` |
+|  2609069 |   88 | `	if( nIdx == SXU32_HIGH ){` |
 |      ! 0 |   89 | `		return 0;` |
 |        - |   90 | `	}` |
-|  1594875 |   91 | `	if( !PH7_VmSlotRegistered(&(*pVm),nIdx) ){` |
+|  2609069 |   91 | `	if( !PH7_VmSlotRegistered(&(*pVm),nIdx) ){` |
 |      ! 0 |   92 | `		return 1;` |
 |        - |   93 | `	}` |
-|  1594875 |   94 | `	if( PH7_VmSlotPinCount(&(*pVm),nIdx) > 0 ){` |
-|      ! 0 |   95 | ``		return 0; /* counted pin: the slot is BOUND to somebody else (`$o->p =& $x`) */`` |
+|  2609069 |   94 | `	if( PH7_VmSlotPinCount(&(*pVm),nIdx) > 0 ){` |
+|      101 |   95 | ``		return 0; /* counted pin: the slot is BOUND to somebody else (`$o->p =& $x`) */`` |
 |        - |   96 | `	}` |
-|  1594875 |   97 | `	if( PH7_VmSlotEntryCount(&(*pVm),nIdx) > 0 ){` |
-|       41 |   98 | `		return 0; /* a NAME holds it too */` |
+|  2608969 |   97 | `	if( PH7_VmSlotEntryCount(&(*pVm),nIdx) > 0 ){` |
+|      145 |   98 | `		return 0; /* a NAME holds it too */` |
 |        - |   99 | `	}` |
-|  1594835 |  100 | `	if( pNode == 0 ){` |
+|  2608825 |  100 | `	if( pNode == 0 ){` |
 |        - |  101 | `		/* A property. Its slot is pinned VM_REF_IDX_KEEP from the moment the object` |
 |        - |  102 | `		 * is built -- that pin IS the property's own hold, which is why it is not` |
 |        - |  103 | `		 * disqualifying here and is for an element. Any node row on top of it is` |
 |        - |  104 | `		 * somebody else pointing at the same slot. */` |
-|  1474855 |  105 | `		return PH7_VmSlotNodeCount(&(*pVm),nIdx) == 0;` |
+|  2406878 |  105 | `		return PH7_VmSlotNodeCount(&(*pVm),nIdx) == 0;` |
 |        - |  106 | `	}` |
-|   119983 |  107 | `	if( PH7_VmSlotKeepPinned(&(*pVm),nIdx) ){` |
+|   201951 |  107 | `	if( PH7_VmSlotKeepPinned(&(*pVm),nIdx) ){` |
 |      ! 0 |  108 | `		return 0; /* an element pinned past its frame: a by-ref return, a capture */` |
 |        - |  109 | `	}` |
-|   119983 |  110 | `	return PH7_VmSlotSoleNodeIs(&(*pVm),nIdx,pNode);` |
-|   796901 |  111 | `}` |
+|   201951 |  110 | `	return PH7_VmSlotSoleNodeIs(&(*pVm),nIdx,pNode);` |
+|  1303791 |  111 | `}` |
 |        - |  112 | `/*` |
 |        - |  113 | ` * May the collector touch this container's refcount at all?` |
 |        - |  114 | ` *` |
@@ -129,60 +129,60 @@ Coverage: 406/423 lines (95.98%)
 |        - |  119 | ` * to the traversal: no decrement, no restore, nothing pushed. They act as outside` |
 |        - |  120 | ` * roots, which is what they are.` |
 |        - |  121 | ` */` |
-| 12815997 |  122 | `static int VmGcCollectable(ph7_vm *pVm,void *pCont,int bMap)` |
+| 13627099 |  122 | `static int VmGcCollectable(ph7_vm *pVm,void *pCont,int bMap)` |
 |        5 |  123 | `{` |
-| 12816002 |  124 | `	if( bMap ){` |
-|  6308557 |  125 | `		ph7_hashmap *pMap = (ph7_hashmap *)pCont;` |
-|  6308557 |  126 | `		return pMap != pVm->pGlobal && pMap->pActiveSteps == 0;` |
+| 13627104 |  124 | `	if( bMap ){` |
+|  6581407 |  125 | `		ph7_hashmap *pMap = (ph7_hashmap *)pCont;` |
+|  6581407 |  126 | `		return pMap != pVm->pGlobal && pMap->pActiveSteps == 0;` |
 |      ! 0 |  127 | `	}else{` |
-|  6507450 |  128 | `		ph7_class_instance *pThis = (ph7_class_instance *)pCont;` |
+|  7045702 |  128 | `		ph7_class_instance *pThis = (ph7_class_instance *)pCont;` |
 |        - |  129 | `		/* DESTROYED: the object is already mid-release and its table is being torn` |
 |        - |  130 | `		 * down under us. */` |
-|  9760515 |  131 | `		return pThis->pActiveIters == 0` |
-|  6507445 |  132 | `			&& (pThis->iFlags & CLASS_INSTANCE_DESTROYED) == 0;` |
+| 10567886 |  131 | `		return pThis->pActiveIters == 0` |
+|  7045697 |  132 | `			&& (pThis->iFlags & CLASS_INSTANCE_DESTROYED) == 0;` |
 |        - |  133 | `	}` |
-|  6406669 |  134 | `}` |
-|  1061868 |  135 | `static sxu8 VmGcColor(void *pCont,int bMap)` |
+|  6812225 |  134 | `}` |
+|  1355730 |  135 | `static sxu8 VmGcColor(void *pCont,int bMap)` |
 |        4 |  136 | `{` |
-|   530936 |  137 | `	return bMap ? ((ph7_hashmap *)pCont)->iGcColor` |
-|   745859 |  138 | `	            : ((ph7_class_instance *)pCont)->iGcColor;` |
+|   677876 |  137 | `	return bMap ? ((ph7_hashmap *)pCont)->iGcColor` |
+|   983103 |  138 | `	            : ((ph7_class_instance *)pCont)->iGcColor;` |
 |        4 |  139 | `}` |
-|   734331 |  140 | `static void VmGcSetColor(void *pCont,int bMap,sxu8 iColor)` |
+|   874533 |  140 | `static void VmGcSetColor(void *pCont,int bMap,sxu8 iColor)` |
 |        4 |  141 | `{` |
-|   734335 |  142 | `	if( bMap ){` |
-|   420489 |  143 | `		((ph7_hashmap *)pCont)->iGcColor = iColor;` |
-|   210245 |  144 | `	}else{` |
-|   313849 |  145 | `		((ph7_class_instance *)pCont)->iGcColor = iColor;` |
+|   874537 |  142 | `	if( bMap ){` |
+|   488853 |  143 | `		((ph7_hashmap *)pCont)->iGcColor = iColor;` |
+|   244434 |  144 | `	}else{` |
+|   385688 |  145 | `		((ph7_class_instance *)pCont)->iGcColor = iColor;` |
 |        - |  146 | `	}` |
-|   734335 |  147 | `}` |
-|   211919 |  148 | `static sxi32 VmGcRefCount(void *pCont,int bMap)` |
+|   874537 |  147 | `}` |
+|   274501 |  148 | `static sxi32 VmGcRefCount(void *pCont,int bMap)` |
 |        4 |  149 | `{` |
-|   211923 |  150 | `	return bMap ? ((ph7_hashmap *)pCont)->iRef : ((ph7_class_instance *)pCont)->iRef;` |
+|   274505 |  150 | `	return bMap ? ((ph7_hashmap *)pCont)->iRef : ((ph7_class_instance *)pCont)->iRef;` |
 |        4 |  151 | `}` |
-|   225486 |  152 | `static void VmGcAddRef(void *pCont,int bMap,sxi32 iDelta)` |
+|   374742 |  152 | `static void VmGcAddRef(void *pCont,int bMap,sxi32 iDelta)` |
 |        4 |  153 | `{` |
-|   225490 |  154 | `	if( bMap ){` |
-|   214426 |  155 | `		((ph7_hashmap *)pCont)->iRef += iDelta;` |
-|   107215 |  156 | `	}else{` |
-|    11067 |  157 | `		((ph7_class_instance *)pCont)->iRef += iDelta;` |
+|   374746 |  154 | `	if( bMap ){` |
+|   287142 |  155 | `		((ph7_hashmap *)pCont)->iRef += iDelta;` |
+|   143573 |  156 | `	}else{` |
+|    87608 |  157 | `		((ph7_class_instance *)pCont)->iRef += iDelta;` |
 |        - |  158 | `	}` |
-|   225490 |  159 | `}` |
+|   374746 |  159 | `}` |
 |        - |  160 | `/* The container a value holds, or 0 when it holds none. */` |
-|  1594775 |  161 | `static void * VmGcValueTarget(ph7_value *pVal,int *pbMap)` |
+|  2608733 |  161 | `static void * VmGcValueTarget(ph7_value *pVal,int *pbMap)` |
 |        4 |  162 | `{` |
-|  1594779 |  163 | `	if( pVal == 0 \|\| pVal->x.pOther == 0 ){` |
-|  1067598 |  164 | `		return 0;` |
+|  2608737 |  163 | `	if( pVal == 0 \|\| pVal->x.pOther == 0 ){` |
+|  1634476 |  164 | `		return 0;` |
 |        - |  165 | `	}` |
-|   527185 |  166 | `	if( pVal->iFlags & MEMOBJ_HASHMAP ){` |
-|   219016 |  167 | `		*pbMap = 1;` |
-|   219016 |  168 | `		return pVal->x.pOther;` |
+|   974265 |  166 | `	if( pVal->iFlags & MEMOBJ_HASHMAP ){` |
+|   318132 |  167 | `		*pbMap = 1;` |
+|   318132 |  168 | `		return pVal->x.pOther;` |
 |        - |  169 | `	}` |
-|   308173 |  170 | `	if( pVal->iFlags & MEMOBJ_OBJ ){` |
-|    14621 |  171 | `		*pbMap = 0;` |
-|    14621 |  172 | `		return pVal->x.pOther;` |
+|   656137 |  170 | `	if( pVal->iFlags & MEMOBJ_OBJ ){` |
+|   120042 |  171 | `		*pbMap = 0;` |
+|   120042 |  172 | `		return pVal->x.pOther;` |
 |        - |  173 | `	}` |
-|   293555 |  174 | `	return 0;` |
-|   796853 |  175 | `}` |
+|   536099 |  174 | `	return 0;` |
+|  1303625 |  175 | `}` |
 |        - |  176 | `/*` |
 |        - |  177 | ` * Walk every container this one holds through a slot it owns outright.` |
 |        - |  178 | ` *` |
@@ -199,80 +199,80 @@ Coverage: 406/423 lines (95.98%)
 |        - |  189 | `};` |
 |        - |  190 | `typedef void (*ProcGcVisit)(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal);` |
 |        - |  191 |  |
-|   538868 |  192 | `static void VmGcWalkChildren(VmGcCtx *pCtx,void *pCont,int bMap,ProcGcVisit xVisit)` |
+|   753088 |  192 | `static void VmGcWalkChildren(VmGcCtx *pCtx,void *pCont,int bMap,ProcGcVisit xVisit)` |
 |        4 |  193 | `{` |
-|   538872 |  194 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   538872 |  195 | `	int bChildMap = 0;` |
+|   753092 |  194 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   753092 |  195 | `	int bChildMap = 0;` |
 |        - |  196 | `	void *pChild;` |
-|   538872 |  197 | `	if( bMap ){` |
-|   322098 |  198 | `		ph7_hashmap *pMap = (ph7_hashmap *)pCont;` |
-|   322098 |  199 | `		ph7_hashmap_node *pNode = pMap->pFirst;` |
-|   322098 |  200 | `		sxu32 n = pMap->nEntry;` |
-|   442117 |  201 | `		while( n > 0 && pNode ){` |
-|   120023 |  202 | `			ph7_hashmap_node *pNext = pNode->pPrev; /* reverse link -- insertion order */` |
-|   120023 |  203 | `			if( VmGcSlotOwned(&(*pVm),pNode->nValIdx,pNode) ){` |
-|   119927 |  204 | `				ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);` |
-|   119927 |  205 | `				pChild = VmGcValueTarget(pVal,&bChildMap);` |
-|   119927 |  206 | `				if( pChild && VmGcCollectable(&(*pVm),pChild,bChildMap) ){` |
-|     7386 |  207 | `					xVisit(pCtx,pChild,bChildMap,pVal);` |
-|     3691 |  208 | `				}` |
-|    59423 |  209 | `			}` |
-|   120023 |  210 | `			pNode = pNext;` |
-|   120023 |  211 | `			n--;` |
+|   753092 |  197 | `	if( bMap ){` |
+|   425884 |  198 | `		ph7_hashmap *pMap = (ph7_hashmap *)pCont;` |
+|   425884 |  199 | `		ph7_hashmap_node *pNode = pMap->pFirst;` |
+|   425884 |  200 | `		sxu32 n = pMap->nEntry;` |
+|   627995 |  201 | `		while( n > 0 && pNode ){` |
+|   202115 |  202 | `			ph7_hashmap_node *pNext = pNode->pPrev; /* reverse link -- insertion order */` |
+|   202115 |  203 | `			if( VmGcSlotOwned(&(*pVm),pNode->nValIdx,pNode) ){` |
+|   201863 |  204 | `				ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);` |
+|   201863 |  205 | `				pChild = VmGcValueTarget(pVal,&bChildMap);` |
+|   201863 |  206 | `				if( pChild && VmGcCollectable(&(*pVm),pChild,bChildMap) ){` |
+|    13932 |  207 | `					xVisit(pCtx,pChild,bChildMap,pVal);` |
+|     6964 |  208 | `				}` |
+|   100182 |  209 | `			}` |
+|   202115 |  210 | `			pNode = pNext;` |
+|   202115 |  211 | `			n--;` |
 |        4 |  212 | `		}` |
-|   161050 |  213 | `	}else{` |
-|   216777 |  214 | `		ph7_class_instance *pThis = (ph7_class_instance *)pCont;` |
-|   216777 |  215 | `		SyHashEntry *pEntry = SyHashFirstEntry(&pThis->hAttr);` |
-|  1691693 |  216 | `		while( pEntry ){` |
-|  1474919 |  217 | `			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;` |
-|  1474919 |  218 | `			SyHashEntry *pNext = SyHashEntryNext(pEntry);` |
+|   212947 |  213 | `	}else{` |
+|   327212 |  214 | `		ph7_class_instance *pThis = (ph7_class_instance *)pCont;` |
+|   327212 |  215 | `		SyHashEntry *pEntry = SyHashFirstEntry(&pThis->hAttr);` |
+|  2734316 |  216 | `		while( pEntry ){` |
+|  2407108 |  217 | `			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;` |
+|  2407108 |  218 | `			SyHashEntry *pNext = SyHashEntryNext(pEntry);` |
 |        - |  219 | `			/* pInst == 0 is a class STATIC or a class constant: one slot shared by` |
 |        - |  220 | `			 * every instance, so it appears in every instance's table and is not` |
 |        - |  221 | `			 * this object's edge at all. Counting it once per instance would` |
 |        - |  222 | `			 * subtract a reference per instance for a value held once. */` |
-|  1474919 |  223 | `			if( pVmAttr && PH7_VmAttrInst(pVmAttr) == pThis && VmGcSlotOwned(&(*pVm),pVmAttr->nIdx,0) ){` |
-|  1474855 |  224 | `				ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);` |
-|  1474855 |  225 | `				pChild = VmGcValueTarget(pVal,&bChildMap);` |
-|  1474855 |  226 | `				if( pChild && VmGcCollectable(&(*pVm),pChild,bChildMap) ){` |
-|   226223 |  227 | `					xVisit(pCtx,pChild,bChildMap,pVal);` |
-|   113110 |  228 | `				}` |
-|   737426 |  229 | `			}` |
-|  1474919 |  230 | `			pEntry = pNext;` |
-|        3 |  231 | `		}` |
+|  2407108 |  223 | `			if( pVmAttr && PH7_VmAttrInst(pVmAttr) == pThis && VmGcSlotOwned(&(*pVm),pVmAttr->nIdx,0) ){` |
+|  2406878 |  224 | `				ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);` |
+|  2406878 |  225 | `				pChild = VmGcValueTarget(pVal,&bChildMap);` |
+|  2406878 |  226 | `				if( pChild && VmGcCollectable(&(*pVm),pChild,bChildMap) ){` |
+|   424213 |  227 | `					xVisit(pCtx,pChild,bChildMap,pVal);` |
+|   212105 |  228 | `				}` |
+|  1203439 |  229 | `			}` |
+|  2407108 |  230 | `			pEntry = pNext;` |
+|        4 |  231 | `		}` |
 |        - |  232 | `	}` |
-|   538872 |  233 | `}` |
+|   753092 |  233 | `}` |
 |        - |  234 | `/* ------------------------------------------------------------------- buffering */` |
 |        - |  235 | `/*` |
 |        - |  236 | ` * A container whose refcount just dropped WITHOUT reaching zero: the only event` |
 |        - |  237 | ` * that can strand a cycle, and so the only one worth remembering.` |
 |        - |  238 | ` */` |
-| 11859050 |  239 | `PH7_PRIVATE void PH7_GcPossibleRoot(ph7_vm *pVm,void *pCont,int bMap)` |
+| 12396198 |  239 | `PH7_PRIVATE void PH7_GcPossibleRoot(ph7_vm *pVm,void *pCont,int bMap)` |
 |        5 |  240 | `{` |
 |        - |  241 | `	VmGcRef sRef;` |
-| 11859055 |  242 | `	if( pVm->bGcEnabled == 0 \|\| pVm->bGcRunning \|\| pVm->bInReset ){` |
-|  3394424 |  243 | `		return;` |
+| 12396203 |  242 | `	if( pVm->bGcEnabled == 0 \|\| pVm->bGcRunning \|\| pVm->bInReset ){` |
+|  3633453 |  243 | `		return;` |
 |        - |  244 | `	}` |
-| 11855657 |  245 | `	if( !VmGcCollectable(&(*pVm),pCont,bMap) ){` |
-|    48720 |  246 | `		return;` |
+| 12365459 |  245 | `	if( !VmGcCollectable(&(*pVm),pCont,bMap) ){` |
+|    52994 |  246 | `		return;` |
 |        - |  247 | `	}` |
-| 11806942 |  248 | `	if( bMap ){` |
-|  5630205 |  249 | `		ph7_hashmap *pMap = (ph7_hashmap *)pCont;` |
-|  5630205 |  250 | `		if( pMap->nGcRoot != 0 ){` |
-|  2181747 |  251 | `			return; /* already buffered */` |
+| 12312470 |  248 | `	if( bMap ){` |
+|  5774659 |  249 | `		ph7_hashmap *pMap = (ph7_hashmap *)pCont;` |
+|  5774659 |  250 | `		if( pMap->nGcRoot != 0 ){` |
+|  2293865 |  251 | `			return; /* already buffered */` |
 |        - |  252 | `		}` |
-|  3448463 |  253 | `		pMap->iGcColor = PH7_GC_PURPLE;` |
-|  3448463 |  254 | `		pMap->nGcRoot = SySetUsed(&pVm->aGcRoot) + 1;` |
-|  1723911 |  255 | `	}else{` |
-|  6176742 |  256 | `		ph7_class_instance *pThis = (ph7_class_instance *)pCont;` |
-|  6176742 |  257 | `		if( pThis->nGcRoot != 0 ){` |
-|  4549903 |  258 | `			return;` |
+|  3480799 |  253 | `		pMap->iGcColor = PH7_GC_PURPLE;` |
+|  3480799 |  254 | `		pMap->nGcRoot = SySetUsed(&pVm->aGcRoot) + 1;` |
+|  1740077 |  255 | `	}else{` |
+|  6537816 |  256 | `		ph7_class_instance *pThis = (ph7_class_instance *)pCont;` |
+|  6537816 |  257 | `		if( pThis->nGcRoot != 0 ){` |
+|  4856874 |  258 | `			return;` |
 |        - |  259 | `		}` |
-|  1626844 |  260 | `		pThis->iGcColor = PH7_GC_PURPLE;` |
-|  1626844 |  261 | `		pThis->nGcRoot = SySetUsed(&pVm->aGcRoot) + 1;` |
+|  1680947 |  260 | `		pThis->iGcColor = PH7_GC_PURPLE;` |
+|  1680947 |  261 | `		pThis->nGcRoot = SySetUsed(&pVm->aGcRoot) + 1;` |
 |        - |  262 | `	}` |
-|  5075302 |  263 | `	sRef.pPtr = pCont;` |
-|  5075302 |  264 | `	sRef.bMap = (sxu8)bMap;` |
-|  5075302 |  265 | `	if( SySetPut(&pVm->aGcRoot,(const void *)&sRef) != SXRET_OK ){` |
+|  5161741 |  263 | `	sRef.pPtr = pCont;` |
+|  5161741 |  264 | `	sRef.bMap = (sxu8)bMap;` |
+|  5161741 |  265 | `	if( SySetPut(&pVm->aGcRoot,(const void *)&sRef) != SXRET_OK ){` |
 |        - |  266 | `		/* No room to remember it: forget it rather than record it wrong */` |
 |      ! 0 |  267 | `		if( bMap ){` |
 |      ! 0 |  268 | `			((ph7_hashmap *)pCont)->nGcRoot = 0;` |
@@ -281,173 +281,173 @@ Coverage: 406/423 lines (95.98%)
 |        - |  271 | `		}` |
 |      ! 0 |  272 | `		return;` |
 |        - |  273 | `	}` |
-|  5075302 |  274 | `	if( SySetUsed(&pVm->aGcRoot) >= pVm->nGcThreshold ){` |
+|  5161741 |  274 | `	if( SySetUsed(&pVm->aGcRoot) >= pVm->nGcThreshold ){` |
 |        - |  275 | `		/* Ask the VM to collect at its next fetch point -- NOT here, which is the` |
 |        - |  276 | `		 * middle of somebody's refcount drop and so the middle of an opcode. */` |
-|       51 |  277 | `		pVm->bGcWanted = 1;` |
-|       24 |  278 | `	}` |
-|  5928197 |  279 | `}` |
+|       68 |  277 | `		pVm->bGcWanted = 1;` |
+|       34 |  278 | `	}` |
+|  6196767 |  279 | `}` |
 |        - |  280 | `/*` |
 |        - |  281 | ` * A buffered container is dying. Its row has to stop naming it before the memory` |
 |        - |  282 | ` * goes back to the pool, or the next collection walks freed memory.` |
 |        - |  283 | ` */` |
-|  6442993 |  284 | `PH7_PRIVATE void PH7_GcForget(ph7_vm *pVm,void *pCont,int bMap)` |
+|  6542248 |  284 | `PH7_PRIVATE void PH7_GcForget(ph7_vm *pVm,void *pCont,int bMap)` |
 |        5 |  285 | `{` |
-|  6442998 |  286 | `	sxu32 nRoot = bMap ? ((ph7_hashmap *)pCont)->nGcRoot` |
-|  3985028 |  287 | `	                   : ((ph7_class_instance *)pCont)->nGcRoot;` |
-|  6442998 |  288 | `	if( nRoot != 0 && nRoot <= SySetUsed(&pVm->aGcRoot) ){` |
-|  4783890 |  289 | `		VmGcRef *aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
-|  4783890 |  290 | `		if( aRoot[nRoot-1].pPtr == pCont ){` |
-|  4783890 |  291 | `			aRoot[nRoot-1].pPtr = 0;` |
-|  2391568 |  292 | `		}` |
-|  2391568 |  293 | `	}` |
-|  6442998 |  294 | `	if( bMap ){` |
-|  4916510 |  295 | `		((ph7_hashmap *)pCont)->nGcRoot = 0;` |
-|  2457970 |  296 | `	}else{` |
-|  1526493 |  297 | `		((ph7_class_instance *)pCont)->nGcRoot = 0;` |
+|  6542253 |  286 | `	sxu32 nRoot = bMap ? ((ph7_hashmap *)pCont)->nGcRoot` |
+|  4060178 |  287 | `	                   : ((ph7_class_instance *)pCont)->nGcRoot;` |
+|  6542253 |  288 | `	if( nRoot != 0 && nRoot <= SySetUsed(&pVm->aGcRoot) ){` |
+|  4846227 |  289 | `		VmGcRef *aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
+|  4846227 |  290 | `		if( aRoot[nRoot-1].pPtr == pCont ){` |
+|  4846227 |  291 | `			aRoot[nRoot-1].pPtr = 0;` |
+|  2422732 |  292 | `		}` |
+|  2422732 |  293 | `	}` |
+|  6542253 |  294 | `	if( bMap ){` |
+|  4964720 |  295 | `		((ph7_hashmap *)pCont)->nGcRoot = 0;` |
+|  2482075 |  296 | `	}else{` |
+|  1577538 |  297 | `		((ph7_class_instance *)pCont)->nGcRoot = 0;` |
 |        - |  298 | `	}` |
-|  6442998 |  299 | `}` |
+|  6542253 |  299 | `}` |
 |        - |  300 | `/* --------------------------------------------------------------- the traversal */` |
 |        - |  301 |  |
 |        - |  302 | `/* The worklists are VM-owned, so a collection allocates nothing per run. */` |
-|   838942 |  303 | `static void VmGcPush(SySet *pWork,void *pCont,int bMap)` |
+|   986664 |  303 | `static void VmGcPush(SySet *pWork,void *pCont,int bMap)` |
 |        4 |  304 | `{` |
 |        - |  305 | `	VmGcRef sRef;` |
-|   838946 |  306 | `	sRef.pPtr = pCont;` |
-|   838946 |  307 | `	sRef.bMap = (sxu8)bMap;` |
-|   838946 |  308 | `	SySetPut(pWork,(const void *)&sRef);` |
-|   838946 |  309 | `}` |
-|   107784 |  310 | `static void VmGcMarkVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
+|   986668 |  306 | `	sRef.pPtr = pCont;` |
+|   986668 |  307 | `	sRef.bMap = (sxu8)bMap;` |
+|   986668 |  308 | `	SySetPut(pWork,(const void *)&sRef);` |
+|   986668 |  309 | `}` |
+|   141402 |  310 | `static void VmGcMarkVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
 |        4 |  311 | `{` |
-|    53892 |  312 | `	SXUNUSED(pVal);` |
-|   107788 |  313 | `	VmGcAddRef(pChild,bChildMap,-1);` |
-|   107788 |  314 | `	if( VmGcColor(pChild,bChildMap) != PH7_GC_GREY ){` |
-|     3204 |  315 | `		VmGcSetColor(pChild,bChildMap,PH7_GC_GREY);` |
-|     3204 |  316 | `		VmGcPush(pCtx->pWork,pChild,bChildMap);` |
-|     1600 |  317 | `	}` |
-|   107788 |  318 | `}` |
-|   310072 |  319 | `static void VmGcDrain(VmGcCtx *pCtx,ProcGcVisit xVisit)` |
+|    70701 |  312 | `	SXUNUSED(pVal);` |
+|   141406 |  313 | `	VmGcAddRef(pChild,bChildMap,-1);` |
+|   141406 |  314 | `	if( VmGcColor(pChild,bChildMap) != PH7_GC_GREY ){` |
+|    18792 |  315 | `		VmGcSetColor(pChild,bChildMap,PH7_GC_GREY);` |
+|    18792 |  316 | `		VmGcPush(pCtx->pWork,pChild,bChildMap);` |
+|     9394 |  317 | `	}` |
+|   141406 |  318 | `}` |
+|   337552 |  319 | `static void VmGcDrain(VmGcCtx *pCtx,ProcGcVisit xVisit)` |
 |        4 |  320 | `{` |
-|   571931 |  321 | `	for(;;){` |
-|   726972 |  322 | `		VmGcRef *pTop = (VmGcRef *)SySetPop(pCtx->pWork);` |
+|   633471 |  321 | `	for(;;){` |
+|   802248 |  322 | `		VmGcRef *pTop = (VmGcRef *)SySetPop(pCtx->pWork);` |
 |        - |  323 | `		VmGcRef sCur;` |
-|   726972 |  324 | `		if( pTop == 0 ){` |
-|   310076 |  325 | `			break;` |
+|   802248 |  324 | `		if( pTop == 0 ){` |
+|   337556 |  325 | `			break;` |
 |        - |  326 | `		}` |
-|   416900 |  327 | `		sCur = *pTop;` |
-|   416900 |  328 | `		VmGcWalkChildren(pCtx,sCur.pPtr,sCur.bMap,xVisit);` |
+|   464696 |  327 | `		sCur = *pTop;` |
+|   464696 |  328 | `		VmGcWalkChildren(pCtx,sCur.pPtr,sCur.bMap,xVisit);` |
 |        4 |  329 | `	}` |
-|   310076 |  330 | `}` |
-|   207085 |  331 | `static void VmGcMarkGrey(VmGcCtx *pCtx,void *pRoot,int bMap)` |
+|   337556 |  330 | `}` |
+|   229417 |  331 | `static void VmGcMarkGrey(VmGcCtx *pCtx,void *pRoot,int bMap)` |
 |        4 |  332 | `{` |
-|   207089 |  333 | `	if( VmGcColor(pRoot,bMap) == PH7_GC_GREY ){` |
-|      188 |  334 | `		return;` |
+|   229421 |  333 | `	if( VmGcColor(pRoot,bMap) == PH7_GC_GREY ){` |
+|      542 |  334 | `		return;` |
 |        - |  335 | `	}` |
-|   206905 |  336 | `	VmGcSetColor(pRoot,bMap,PH7_GC_GREY);` |
-|   206905 |  337 | `	pCtx->pWork = &pCtx->pVm->aGcWork;` |
-|   206905 |  338 | `	SySetReset(pCtx->pWork);` |
-|   206905 |  339 | `	VmGcPush(pCtx->pWork,pRoot,bMap);` |
-|   206905 |  340 | `	VmGcDrain(pCtx,VmGcMarkVisit);` |
-|   103546 |  341 | `}` |
-|   104398 |  342 | `static void VmGcBlackVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
+|   228883 |  336 | `	VmGcSetColor(pRoot,bMap,PH7_GC_GREY);` |
+|   228883 |  337 | `	pCtx->pWork = &pCtx->pVm->aGcWork;` |
+|   228883 |  338 | `	SySetReset(pCtx->pWork);` |
+|   228883 |  339 | `	VmGcPush(pCtx->pWork,pRoot,bMap);` |
+|   228883 |  340 | `	VmGcDrain(pCtx,VmGcMarkVisit);` |
+|   114714 |  341 | `}` |
+|   110670 |  342 | `static void VmGcBlackVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
 |        4 |  343 | `{` |
-|    52199 |  344 | `	SXUNUSED(pVal);` |
-|   104402 |  345 | `	VmGcAddRef(pChild,bChildMap,1);` |
-|   104402 |  346 | `	if( VmGcColor(pChild,bChildMap) != PH7_GC_BLACK ){` |
-|   103628 |  347 | `		VmGcSetColor(pChild,bChildMap,PH7_GC_BLACK);` |
-|   103628 |  348 | `		VmGcPush(pCtx->pWork,pChild,bChildMap);` |
-|    51812 |  349 | `	}` |
-|   104402 |  350 | `}` |
+|    55335 |  344 | `	SXUNUSED(pVal);` |
+|   110674 |  345 | `	VmGcAddRef(pChild,bChildMap,1);` |
+|   110674 |  346 | `	if( VmGcColor(pChild,bChildMap) != PH7_GC_BLACK ){` |
+|   108356 |  347 | `		VmGcSetColor(pChild,bChildMap,PH7_GC_BLACK);` |
+|   108356 |  348 | `		VmGcPush(pCtx->pWork,pChild,bChildMap);` |
+|    54176 |  349 | `	}` |
+|   110674 |  350 | `}` |
 |        - |  351 | `/* Runs on its OWN worklist: the scan below is mid-drain of the primary one. */` |
-|   103171 |  352 | `static void VmGcScanBlack(VmGcCtx *pCtx,void *pRoot,int bMap)` |
+|   108673 |  352 | `static void VmGcScanBlack(VmGcCtx *pCtx,void *pRoot,int bMap)` |
 |        4 |  353 | `{` |
 |        - |  354 | `	VmGcCtx sSub;` |
-|   103175 |  355 | `	sSub.pVm = pCtx->pVm;` |
-|   103175 |  356 | `	sSub.pDead = pCtx->pDead;` |
-|   103175 |  357 | `	sSub.pWork = &pCtx->pVm->aGcAux;` |
-|   103175 |  358 | `	SySetReset(sSub.pWork);` |
-|   103175 |  359 | `	VmGcSetColor(pRoot,bMap,PH7_GC_BLACK);` |
-|   103175 |  360 | `	VmGcPush(sSub.pWork,pRoot,bMap);` |
-|   103175 |  361 | `	VmGcDrain(&sSub,VmGcBlackVisit);` |
-|   103175 |  362 | `}` |
-|     7876 |  363 | `static void VmGcPushVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
-|        3 |  364 | `{` |
-|     3938 |  365 | `	SXUNUSED(pVal);` |
-|     7879 |  366 | `	VmGcPush(pCtx->pWork,pChild,bChildMap);` |
-|     7879 |  367 | `}` |
-|   207085 |  368 | `static void VmGcScan(VmGcCtx *pCtx,void *pRoot,int bMap)` |
+|   108677 |  355 | `	sSub.pVm = pCtx->pVm;` |
+|   108677 |  356 | `	sSub.pDead = pCtx->pDead;` |
+|   108677 |  357 | `	sSub.pWork = &pCtx->pVm->aGcAux;` |
+|   108677 |  358 | `	SySetReset(sSub.pWork);` |
+|   108677 |  359 | `	VmGcSetColor(pRoot,bMap,PH7_GC_BLACK);` |
+|   108677 |  360 | `	VmGcPush(sSub.pWork,pRoot,bMap);` |
+|   108677 |  361 | `	VmGcDrain(&sSub,VmGcBlackVisit);` |
+|   108677 |  362 | `}` |
+|    63138 |  363 | `static void VmGcPushVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
+|        4 |  364 | `{` |
+|    31569 |  365 | `	SXUNUSED(pVal);` |
+|    63142 |  366 | `	VmGcPush(pCtx->pWork,pChild,bChildMap);` |
+|    63142 |  367 | `}` |
+|   229417 |  368 | `static void VmGcScan(VmGcCtx *pCtx,void *pRoot,int bMap)` |
 |        4 |  369 | `{` |
-|   207089 |  370 | `	pCtx->pWork = &pCtx->pVm->aGcWork;` |
-|   207089 |  371 | `	SySetReset(pCtx->pWork);` |
-|   207089 |  372 | `	VmGcPush(pCtx->pWork,pRoot,bMap);` |
-|   313636 |  373 | `	for(;;){` |
-|   418664 |  374 | `		VmGcRef *pTop = (VmGcRef *)SySetPop(pCtx->pWork);` |
+|   229421 |  370 | `	pCtx->pWork = &pCtx->pVm->aGcWork;` |
+|   229421 |  371 | `	SySetReset(pCtx->pWork);` |
+|   229421 |  372 | `	VmGcPush(pCtx->pWork,pRoot,bMap);` |
+|   367551 |  373 | `	for(;;){` |
+|   491244 |  374 | `		VmGcRef *pTop = (VmGcRef *)SySetPop(pCtx->pWork);` |
 |        - |  375 | `		VmGcRef sCur;` |
-|   418664 |  376 | `		if( pTop == 0 ){` |
-|   207089 |  377 | `			break;` |
+|   491244 |  376 | `		if( pTop == 0 ){` |
+|   229421 |  377 | `			break;` |
 |        - |  378 | `		}` |
-|   211579 |  379 | `		sCur = *pTop;` |
-|   211579 |  380 | `		if( VmGcColor(sCur.pPtr,sCur.bMap) != PH7_GC_GREY ){` |
-|     2966 |  381 | `			continue;` |
+|   261827 |  379 | `		sCur = *pTop;` |
+|   261827 |  380 | `		if( VmGcColor(sCur.pPtr,sCur.bMap) != PH7_GC_GREY ){` |
+|    17968 |  381 | `			continue;` |
 |        - |  382 | `		}` |
 |        - |  383 | `		/* A count left over is an outside hold -- and so is a state the traversal` |
 |        - |  384 | `		 * cannot see through. A container that acquired a walk in flight between` |
 |        - |  385 | `		 * being buffered and being scanned is held by that cursor, which no` |
 |        - |  386 | `		 * refcount names, so it is put back exactly like one that still counts. */` |
-|   208613 |  387 | `		if( VmGcRefCount(sCur.pPtr,sCur.bMap) > 0` |
-|   157031 |  388 | `		 \|\| !VmGcCollectable(pCtx->pVm,sCur.pPtr,sCur.bMap) ){` |
-|   103175 |  389 | `			VmGcScanBlack(pCtx,sCur.pPtr,sCur.bMap);` |
-|    51589 |  390 | `		}else{` |
-|   105445 |  391 | `			VmGcSetColor(sCur.pPtr,sCur.bMap,PH7_GC_WHITE);` |
-|   105445 |  392 | `			VmGcWalkChildren(pCtx,sCur.pPtr,sCur.bMap,VmGcPushVisit);` |
+|   243859 |  387 | `		if( VmGcRefCount(sCur.pPtr,sCur.bMap) > 0` |
+|   189528 |  388 | `		 \|\| !VmGcCollectable(pCtx->pVm,sCur.pPtr,sCur.bMap) ){` |
+|   108677 |  389 | `			VmGcScanBlack(pCtx,sCur.pPtr,sCur.bMap);` |
+|    54342 |  390 | `		}else{` |
+|   135190 |  391 | `			VmGcSetColor(sCur.pPtr,sCur.bMap,PH7_GC_WHITE);` |
+|   135190 |  392 | `			VmGcWalkChildren(pCtx,sCur.pPtr,sCur.bMap,VmGcPushVisit);` |
 |        - |  393 | `		}` |
 |        4 |  394 | `	}` |
-|   207089 |  395 | `}` |
+|   229421 |  395 | `}` |
 |        - |  396 | `/* Everything still white is garbage: move it to the dead list, once. */` |
-|   207085 |  397 | `static void VmGcCollectWhite(VmGcCtx *pCtx,void *pRoot,int bMap)` |
+|   229417 |  397 | `static void VmGcCollectWhite(VmGcCtx *pCtx,void *pRoot,int bMap)` |
 |        4 |  398 | `{` |
-|   207089 |  399 | `	pCtx->pWork = &pCtx->pVm->aGcWork;` |
-|   207089 |  400 | `	SySetReset(pCtx->pWork);` |
-|   207089 |  401 | `	VmGcPush(pCtx->pWork,pRoot,bMap);` |
-|   210431 |  402 | `	for(;;){` |
-|   417560 |  403 | `		VmGcRef *pTop = (VmGcRef *)SySetPop(pCtx->pWork);` |
+|   229421 |  399 | `	pCtx->pWork = &pCtx->pVm->aGcWork;` |
+|   229421 |  400 | `	SySetReset(pCtx->pWork);` |
+|   229421 |  401 | `	VmGcPush(pCtx->pWork,pRoot,bMap);` |
+|   260104 |  402 | `	for(;;){` |
+|   489570 |  403 | `		VmGcRef *pTop = (VmGcRef *)SySetPop(pCtx->pWork);` |
 |        - |  404 | `		VmGcRef sCur;` |
-|   417560 |  405 | `		if( pTop == 0 ){` |
-|   207089 |  406 | `			break;` |
+|   489570 |  405 | `		if( pTop == 0 ){` |
+|   229421 |  406 | `			break;` |
 |        - |  407 | `		}` |
-|   210475 |  408 | `		sCur = *pTop;` |
-|   210475 |  409 | `		if( VmGcColor(sCur.pPtr,sCur.bMap) != PH7_GC_WHITE ){` |
-|   207169 |  410 | `			continue;` |
+|   260153 |  408 | `		sCur = *pTop;` |
+|   260153 |  409 | `		if( VmGcColor(sCur.pPtr,sCur.bMap) != PH7_GC_WHITE ){` |
+|   229511 |  410 | `			continue;` |
 |        - |  411 | `		}` |
-|     3307 |  412 | `		VmGcSetColor(sCur.pPtr,sCur.bMap,PH7_GC_DEAD);` |
-|     3307 |  413 | `		SySetPut(pCtx->pDead,(const void *)&sCur);` |
-|     3307 |  414 | `		VmGcWalkChildren(pCtx,sCur.pPtr,sCur.bMap,VmGcPushVisit);` |
+|    30643 |  412 | `		VmGcSetColor(sCur.pPtr,sCur.bMap,PH7_GC_DEAD);` |
+|    30643 |  413 | `		SySetPut(pCtx->pDead,(const void *)&sCur);` |
+|    30643 |  414 | `		VmGcWalkChildren(pCtx,sCur.pPtr,sCur.bMap,VmGcPushVisit);` |
 |        1 |  415 | `	}` |
-|   207089 |  416 | `}` |
+|   229421 |  416 | `}` |
 |        - |  417 | `/* --------------------------------------------------------- proof, and the free */` |
 |        - |  418 |  |
-|     3386 |  419 | `static void VmGcUncountVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
+|    30732 |  419 | `static void VmGcUncountVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
 |        1 |  420 | `{` |
-|     1693 |  421 | `	SXUNUSED(pCtx); SXUNUSED(pVal);` |
-|     3387 |  422 | `	if( VmGcColor(pChild,bChildMap) == PH7_GC_DEAD ){` |
-|     3307 |  423 | `		VmGcAddRef(pChild,bChildMap,-1);` |
-|     1653 |  424 | `	}` |
-|     3387 |  425 | `}` |
-|     3386 |  426 | `static void VmGcRecountVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
+|    15366 |  421 | `	SXUNUSED(pCtx); SXUNUSED(pVal);` |
+|    30733 |  422 | `	if( VmGcColor(pChild,bChildMap) == PH7_GC_DEAD ){` |
+|    30649 |  423 | `		VmGcAddRef(pChild,bChildMap,-1);` |
+|    15324 |  424 | `	}` |
+|    30733 |  425 | `}` |
+|    30732 |  426 | `static void VmGcRecountVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
 |        1 |  427 | `{` |
-|     1693 |  428 | `	SXUNUSED(pCtx); SXUNUSED(pVal);` |
-|     3387 |  429 | `	if( VmGcColor(pChild,bChildMap) == PH7_GC_DEAD ){` |
-|     3307 |  430 | `		VmGcAddRef(pChild,bChildMap,1);` |
-|     1653 |  431 | `	}` |
-|     3387 |  432 | `}` |
-|     3386 |  433 | `static void VmGcCutVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
+|    15366 |  428 | `	SXUNUSED(pCtx); SXUNUSED(pVal);` |
+|    30733 |  429 | `	if( VmGcColor(pChild,bChildMap) == PH7_GC_DEAD ){` |
+|    30649 |  430 | `		VmGcAddRef(pChild,bChildMap,1);` |
+|    15324 |  431 | `	}` |
+|    30733 |  432 | `}` |
+|    30732 |  433 | `static void VmGcCutVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
 |        1 |  434 | `{` |
-|     1693 |  435 | `	SXUNUSED(pCtx);` |
-|     3387 |  436 | `	if( VmGcColor(pChild,bChildMap) == PH7_GC_DEAD ){` |
+|    15366 |  435 | `	SXUNUSED(pCtx);` |
+|    30733 |  436 | `	if( VmGcColor(pChild,bChildMap) == PH7_GC_DEAD ){` |
 |        - |  437 | `		/* The child is pinned for the duration, so this drops the edge and nothing else */` |
-|     3307 |  438 | `		PH7_MemObjRelease(pVal);` |
-|     1653 |  439 | `	}` |
-|     3387 |  440 | `}` |
+|    30649 |  438 | `		PH7_MemObjRelease(pVal);` |
+|    15324 |  439 | `	}` |
+|    30733 |  440 | `}` |
 |        - |  441 | `/*` |
 |        - |  442 | ` * Put back the edges the MARK phase subtracted and nothing has put back.` |
 |        - |  443 | ` *` |
@@ -462,19 +462,19 @@ Coverage: 406/423 lines (95.98%)
 |        - |  452 | ` * From here on ordinary refcounting is exact for the dead set: a destructor may` |
 |        - |  453 | ` * add a reference, drop one, or rewire the graph, and the count follows.` |
 |        - |  454 | ` */` |
-|     3386 |  455 | `static void VmGcRestoreVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
+|    30732 |  455 | `static void VmGcRestoreVisit(VmGcCtx *pCtx,void *pChild,int bChildMap,ph7_value *pVal)` |
 |        1 |  456 | `{` |
-|     1693 |  457 | `	SXUNUSED(pCtx); SXUNUSED(pVal);` |
-|     3387 |  458 | `	VmGcAddRef(pChild,bChildMap,1);` |
-|     3387 |  459 | `}` |
-|       10 |  460 | `static void VmGcRestoreDead(VmGcCtx *pCtx)` |
+|    15366 |  457 | `	SXUNUSED(pCtx); SXUNUSED(pVal);` |
+|    30733 |  458 | `	VmGcAddRef(pChild,bChildMap,1);` |
+|    30733 |  459 | `}` |
+|       18 |  460 | `static void VmGcRestoreDead(VmGcCtx *pCtx)` |
 |        1 |  461 | `{` |
-|       11 |  462 | `	VmGcRef *aDead = (VmGcRef *)SySetBasePtr(pCtx->pDead);` |
-|       11 |  463 | `	sxu32 n, nDead = SySetUsed(pCtx->pDead);` |
-|     3317 |  464 | `	for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  465 | `		VmGcWalkChildren(pCtx,aDead[n].pPtr,aDead[n].bMap,VmGcRestoreVisit);` |
-|     1654 |  466 | `	}` |
-|       11 |  467 | `}` |
+|       19 |  462 | `	VmGcRef *aDead = (VmGcRef *)SySetBasePtr(pCtx->pDead);` |
+|       19 |  463 | `	sxu32 n, nDead = SySetUsed(pCtx->pDead);` |
+|    30661 |  464 | `	for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  465 | `		VmGcWalkChildren(pCtx,aDead[n].pPtr,aDead[n].bMap,VmGcRestoreVisit);` |
+|    15322 |  466 | `	}` |
+|       19 |  467 | `}` |
 |        - |  468 | `/*` |
 |        - |  469 | ` * Re-derive the answer before acting on it: subtract the edges INSIDE the dead` |
 |        - |  470 | ` * set and require every member to fall to exactly the one reference the collector` |
@@ -487,24 +487,24 @@ Coverage: 406/423 lines (95.98%)
 |        - |  477 | ` * destructor that rewired something: refcounting stayed exact through the` |
 |        - |  478 | ` * destructor, so subtracting the edges that exist now is the right subtraction.` |
 |        - |  479 | ` */` |
-|       10 |  480 | `static int VmGcVerifyDead(VmGcCtx *pCtx)` |
+|       18 |  480 | `static int VmGcVerifyDead(VmGcCtx *pCtx)` |
 |        1 |  481 | `{` |
-|       11 |  482 | `	VmGcRef *aDead = (VmGcRef *)SySetBasePtr(pCtx->pDead);` |
-|       11 |  483 | `	sxu32 n, nDead = SySetUsed(pCtx->pDead);` |
-|       11 |  484 | `	int bOk = TRUE;` |
-|     3317 |  485 | `	for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  486 | `		VmGcWalkChildren(pCtx,aDead[n].pPtr,aDead[n].bMap,VmGcUncountVisit);` |
-|     1654 |  487 | `	}` |
-|     3317 |  488 | `	for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  489 | `		if( VmGcRefCount(aDead[n].pPtr,aDead[n].bMap) != 1 ){` |
+|       19 |  482 | `	VmGcRef *aDead = (VmGcRef *)SySetBasePtr(pCtx->pDead);` |
+|       19 |  483 | `	sxu32 n, nDead = SySetUsed(pCtx->pDead);` |
+|       19 |  484 | `	int bOk = TRUE;` |
+|    30661 |  485 | `	for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  486 | `		VmGcWalkChildren(pCtx,aDead[n].pPtr,aDead[n].bMap,VmGcUncountVisit);` |
+|    15322 |  487 | `	}` |
+|    30661 |  488 | `	for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  489 | `		if( VmGcRefCount(aDead[n].pPtr,aDead[n].bMap) != 1 ){` |
 |      ! 0 |  490 | `			bOk = FALSE;` |
 |      ! 0 |  491 | `			break;` |
 |        - |  492 | `		}` |
-|     1654 |  493 | `	}` |
-|     3317 |  494 | `	for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  495 | `		VmGcWalkChildren(pCtx,aDead[n].pPtr,aDead[n].bMap,VmGcRecountVisit);` |
-|     1654 |  496 | `	}` |
-|       11 |  497 | `	return bOk;` |
+|    15322 |  493 | `	}` |
+|    30661 |  494 | `	for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  495 | `		VmGcWalkChildren(pCtx,aDead[n].pPtr,aDead[n].bMap,VmGcRecountVisit);` |
+|    15322 |  496 | `	}` |
+|       19 |  497 | `	return bOk;` |
 |        1 |  498 | `}` |
 |        - |  499 | `/* ---------------------------------------------------------------- the collection */` |
 |        - |  500 |  |
@@ -524,112 +524,112 @@ Coverage: 406/423 lines (95.98%)
 |        - |  514 | ` * evidence -- they are facts about the program, not about the machine, which is` |
 |        - |  515 | ` * shared here and cannot be timed.` |
 |        - |  516 | ` */` |
-|       50 |  517 | `static void VmGcAdjustThreshold(ph7_vm *pVm,sxu32 nCollected,sxu32 nRoots)` |
+|       60 |  517 | `static void VmGcAdjustThreshold(ph7_vm *pVm,sxu32 nCollected,sxu32 nRoots)` |
 |        4 |  518 | `{` |
-|       54 |  519 | `	if( nCollected * 4 < nRoots ){` |
-|       54 |  520 | `		if( pVm->nGcThreshold < VM_GC_THRESHOLD_MAX ){` |
-|       30 |  521 | `			pVm->nGcThreshold <<= 1;` |
-|       13 |  522 | `		}` |
-|       29 |  523 | `	}else{` |
-|      ! 0 |  524 | `		pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;` |
+|       64 |  519 | `	if( nCollected * 4 < nRoots ){` |
+|       60 |  520 | `		if( pVm->nGcThreshold < VM_GC_THRESHOLD_MAX ){` |
+|       34 |  521 | `			pVm->nGcThreshold <<= 1;` |
+|       15 |  522 | `		}` |
+|       32 |  523 | `	}else{` |
+|        5 |  524 | `		pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;` |
 |        - |  525 | `	}` |
-|       54 |  526 | `}` |
-|       50 |  527 | `PH7_PRIVATE sxu32 PH7_GcCollect(ph7_vm *pVm)` |
+|       64 |  526 | `}` |
+|       60 |  527 | `PH7_PRIVATE sxu32 PH7_GcCollect(ph7_vm *pVm)` |
 |        4 |  528 | `{` |
 |        - |  529 | `	VmGcCtx sCtx;` |
 |        - |  530 | `	VmGcRef *aRoot, *aDead;` |
-|       54 |  531 | `	sxu32 n, nRoots, nDead, nCollected = 0;` |
-|       54 |  532 | `	pVm->bGcWanted = 0;` |
-|       54 |  533 | `	if( pVm->bGcRunning \|\| pVm->bInReset ){` |
+|       64 |  531 | `	sxu32 n, nRoots, nDead, nCollected = 0;` |
+|       64 |  532 | `	pVm->bGcWanted = 0;` |
+|       64 |  533 | `	if( pVm->bGcRunning \|\| pVm->bInReset ){` |
 |      ! 0 |  534 | `		return 0;` |
 |        - |  535 | `	}` |
-|       54 |  536 | `	if( SySetUsed(&pVm->aGcRoot) < 1 ){` |
+|       64 |  536 | `	if( SySetUsed(&pVm->aGcRoot) < 1 ){` |
 |      ! 0 |  537 | `		return 0;` |
 |        - |  538 | `	}` |
-|       54 |  539 | `	pVm->bGcRunning = 1;` |
-|       54 |  540 | `	pVm->nGcRuns++;` |
-|       54 |  541 | `	sCtx.pVm = pVm;` |
-|       54 |  542 | `	sCtx.pWork = &pVm->aGcWork;` |
-|       54 |  543 | `	sCtx.pDead = &pVm->aGcDead;` |
-|       54 |  544 | `	SySetReset(&pVm->aGcDead);` |
+|       64 |  539 | `	pVm->bGcRunning = 1;` |
+|       64 |  540 | `	pVm->nGcRuns++;` |
+|       64 |  541 | `	sCtx.pVm = pVm;` |
+|       64 |  542 | `	sCtx.pWork = &pVm->aGcWork;` |
+|       64 |  543 | `	sCtx.pDead = &pVm->aGcDead;` |
+|       64 |  544 | `	SySetReset(&pVm->aGcDead);` |
 |        - |  545 |  |
 |        - |  546 | `	/* (1) mark: subtract every reference internal to the buffered subgraph */` |
-|       54 |  547 | `	nRoots = SySetUsed(&pVm->aGcRoot);` |
-|  4573179 |  548 | `	for( n = 0 ; n < nRoots ; ++n ){` |
-|  4573129 |  549 | `		aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
-|  4573129 |  550 | `		if( aRoot[n].pPtr == 0 \|\| !VmGcCollectable(pVm,aRoot[n].pPtr,aRoot[n].bMap) ){` |
-|  4366044 |  551 | `			continue;` |
+|       64 |  547 | `	nRoots = SySetUsed(&pVm->aGcRoot);` |
+|  4941935 |  548 | `	for( n = 0 ; n < nRoots ; ++n ){` |
+|  4941875 |  549 | `		aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
+|  4941875 |  550 | `		if( aRoot[n].pPtr == 0 \|\| !VmGcCollectable(pVm,aRoot[n].pPtr,aRoot[n].bMap) ){` |
+|  4712458 |  551 | `			continue;` |
 |        - |  552 | `		}` |
-|   207089 |  553 | `		VmGcMarkGrey(&sCtx,aRoot[n].pPtr,aRoot[n].bMap);` |
-|   103546 |  554 | `	}` |
+|   229421 |  553 | `		VmGcMarkGrey(&sCtx,aRoot[n].pPtr,aRoot[n].bMap);` |
+|   114714 |  554 | `	}` |
 |        - |  555 | `	/* (2) scan: put back what is still reachable from outside */` |
-|  4573179 |  556 | `	for( n = 0 ; n < nRoots ; ++n ){` |
-|  4573129 |  557 | `		aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
-|  4573129 |  558 | `		if( aRoot[n].pPtr == 0 \|\| !VmGcCollectable(pVm,aRoot[n].pPtr,aRoot[n].bMap) ){` |
-|  4366044 |  559 | `			continue;` |
+|  4941935 |  556 | `	for( n = 0 ; n < nRoots ; ++n ){` |
+|  4941875 |  557 | `		aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
+|  4941875 |  558 | `		if( aRoot[n].pPtr == 0 \|\| !VmGcCollectable(pVm,aRoot[n].pPtr,aRoot[n].bMap) ){` |
+|  4712458 |  559 | `			continue;` |
 |        - |  560 | `		}` |
-|   207089 |  561 | `		VmGcScan(&sCtx,aRoot[n].pPtr,aRoot[n].bMap);` |
-|   103546 |  562 | `	}` |
+|   229421 |  561 | `		VmGcScan(&sCtx,aRoot[n].pPtr,aRoot[n].bMap);` |
+|   114714 |  562 | `	}` |
 |        - |  563 | `	/* (3) gather what stayed white */` |
-|  4573179 |  564 | `	for( n = 0 ; n < nRoots ; ++n ){` |
-|  4573129 |  565 | `		aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
-|  4573129 |  566 | `		if( aRoot[n].pPtr == 0 \|\| !VmGcCollectable(pVm,aRoot[n].pPtr,aRoot[n].bMap) ){` |
-|  4366044 |  567 | `			continue;` |
+|  4941935 |  564 | `	for( n = 0 ; n < nRoots ; ++n ){` |
+|  4941875 |  565 | `		aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
+|  4941875 |  566 | `		if( aRoot[n].pPtr == 0 \|\| !VmGcCollectable(pVm,aRoot[n].pPtr,aRoot[n].bMap) ){` |
+|  4712458 |  567 | `			continue;` |
 |        - |  568 | `		}` |
-|   207089 |  569 | `		VmGcCollectWhite(&sCtx,aRoot[n].pPtr,aRoot[n].bMap);` |
-|   103546 |  570 | `	}` |
+|   229421 |  569 | `		VmGcCollectWhite(&sCtx,aRoot[n].pPtr,aRoot[n].bMap);` |
+|   114714 |  570 | `	}` |
 |        - |  571 | `	/* The buffer is spent either way; every surviving root is black again. */` |
-|       54 |  572 | `	aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
-|  4573179 |  573 | `	for( n = 0 ; n < nRoots ; ++n ){` |
-|  4573129 |  574 | `		if( aRoot[n].pPtr == 0 ){` |
-|  4366038 |  575 | `			continue;` |
+|       64 |  572 | `	aRoot = (VmGcRef *)SySetBasePtr(&pVm->aGcRoot);` |
+|  4941935 |  573 | `	for( n = 0 ; n < nRoots ; ++n ){` |
+|  4941875 |  574 | `		if( aRoot[n].pPtr == 0 ){` |
+|  4712444 |  575 | `			continue;` |
 |        - |  576 | `		}` |
-|   207095 |  577 | `		if( VmGcColor(aRoot[n].pPtr,aRoot[n].bMap) != PH7_GC_DEAD ){` |
-|   205385 |  578 | `			VmGcSetColor(aRoot[n].pPtr,aRoot[n].bMap,PH7_GC_BLACK);` |
-|   102690 |  579 | `		}` |
-|   207095 |  580 | `		if( aRoot[n].bMap ){` |
-|   103287 |  581 | `			((ph7_hashmap *)aRoot[n].pPtr)->nGcRoot = 0;` |
-|    51645 |  582 | `		}else{` |
-|   103811 |  583 | `			((ph7_class_instance *)aRoot[n].pPtr)->nGcRoot = 0;` |
+|   229435 |  577 | `		if( VmGcColor(aRoot[n].pPtr,aRoot[n].bMap) != PH7_GC_DEAD ){` |
+|   213375 |  578 | `			VmGcSetColor(aRoot[n].pPtr,aRoot[n].bMap,PH7_GC_BLACK);` |
+|   106688 |  579 | `		}` |
+|   229435 |  580 | `		if( aRoot[n].bMap ){` |
+|   106817 |  581 | `			((ph7_hashmap *)aRoot[n].pPtr)->nGcRoot = 0;` |
+|    53413 |  582 | `		}else{` |
+|   122622 |  583 | `			((ph7_class_instance *)aRoot[n].pPtr)->nGcRoot = 0;` |
 |        - |  584 | `		}` |
-|   103549 |  585 | `	}` |
-|       54 |  586 | `	SySetReset(&pVm->aGcRoot);` |
+|   114722 |  585 | `	}` |
+|       64 |  586 | `	SySetReset(&pVm->aGcRoot);` |
 |        - |  587 |  |
-|       54 |  588 | `	nDead = SySetUsed(&pVm->aGcDead);` |
-|       54 |  589 | `	if( nDead < 1 ){` |
+|       64 |  588 | `	nDead = SySetUsed(&pVm->aGcDead);` |
+|       64 |  589 | `	if( nDead < 1 ){` |
 |        - |  590 | `		/* Nothing was reclaimable. That is a full mark-and-scan spent, and the` |
 |        - |  591 | `		 * threshold has to answer for it -- see VmGcAdjustThreshold. */` |
-|       44 |  592 | `		VmGcAdjustThreshold(pVm,0,nRoots);` |
-|       44 |  593 | `		pVm->bGcRunning = 0;` |
-|       44 |  594 | `		return 0;` |
+|       46 |  592 | `		VmGcAdjustThreshold(pVm,0,nRoots);` |
+|       46 |  593 | `		pVm->bGcRunning = 0;` |
+|       46 |  594 | `		return 0;` |
 |        - |  595 | `	}` |
 |        - |  596 | `	/* (4) hold everything dead while the destructors run: a destructor reads its` |
 |        - |  597 | `	 * own object's properties, and those are other members of the same dead set.` |
 |        - |  598 | `	 * Then put back what the MARK phase subtracted, so from here on the dead set` |
 |        - |  599 | `	 * carries its TRUE refcount plus that one hold -- which is what lets a` |
 |        - |  600 | `	 * destructor run arbitrary PHP over it and leave the numbers exact. */` |
-|       11 |  601 | `	aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
-|     3317 |  602 | `	for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  603 | `		VmGcAddRef(aDead[n].pPtr,aDead[n].bMap,1);` |
-|     1654 |  604 | `	}` |
-|       11 |  605 | `	VmGcRestoreDead(&sCtx);` |
-|     3317 |  606 | `	for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  607 | `		aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
-|     3307 |  608 | `		if( aDead[n].bMap == 0 ){` |
-|     1685 |  609 | `			ph7_class_instance *pThis = (ph7_class_instance *)aDead[n].pPtr;` |
-|     1685 |  610 | `			if( (pThis->iFlags & CLASS_INSTANCE_DTOR_CALLED) == 0 ){` |
-|     1685 |  611 | `				PH7_ClassInstanceCallDestructor(pThis);` |
-|      842 |  612 | `			}` |
-|      842 |  613 | `		}` |
-|     1654 |  614 | `	}` |
+|       19 |  601 | `	aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
+|    30661 |  602 | `	for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  603 | `		VmGcAddRef(aDead[n].pPtr,aDead[n].bMap,1);` |
+|    15322 |  604 | `	}` |
+|       19 |  605 | `	VmGcRestoreDead(&sCtx);` |
+|    30661 |  606 | `	for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  607 | `		aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
+|    30643 |  608 | `		if( aDead[n].bMap == 0 ){` |
+|    16037 |  609 | `			ph7_class_instance *pThis = (ph7_class_instance *)aDead[n].pPtr;` |
+|    16037 |  610 | `			if( (pThis->iFlags & CLASS_INSTANCE_DTOR_CALLED) == 0 ){` |
+|    16037 |  611 | `				PH7_ClassInstanceCallDestructor(pThis);` |
+|     8018 |  612 | `			}` |
+|     8018 |  613 | `		}` |
+|    15322 |  614 | `	}` |
 |        - |  615 | `	/* (5) prove it, then break the edges inside the dead set */` |
-|       11 |  616 | `	if( VmGcVerifyDead(&sCtx) ){` |
-|       11 |  617 | `		aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
-|     3317 |  618 | `		for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  619 | `			VmGcWalkChildren(&sCtx,aDead[n].pPtr,aDead[n].bMap,VmGcCutVisit);` |
-|     1654 |  620 | `		}` |
-|       11 |  621 | `		nCollected = nDead;` |
-|        5 |  622 | `	}` |
+|       19 |  616 | `	if( VmGcVerifyDead(&sCtx) ){` |
+|       19 |  617 | `		aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
+|    30661 |  618 | `		for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  619 | `			VmGcWalkChildren(&sCtx,aDead[n].pPtr,aDead[n].bMap,VmGcCutVisit);` |
+|    15322 |  620 | `		}` |
+|       19 |  621 | `		nCollected = nDead;` |
+|        9 |  622 | `	}` |
 |        - |  623 | `	/* (6) give back the hold. With the edges cut every member falls to zero and` |
 |        - |  624 | `	 * dies through its ordinary release path -- native teardown, weak cells, the` |
 |        - |  625 | `	 * slot free list, all of it. When the proof failed nothing was cut, so this` |
@@ -638,36 +638,36 @@ Coverage: 406/423 lines (95.98%)
 |        - |  628 | `	 * bGcRunning stays UP across it. Freeing a member runs its holders' teardown,` |
 |        - |  629 | `	 * which runs PHP, which reaches a fetch point -- and a collection entered from` |
 |        - |  630 | `	 * there would reset the very list this loop is walking. */` |
-|       11 |  631 | `	aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
-|     3317 |  632 | `	for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  633 | `		if( VmGcColor(aDead[n].pPtr,aDead[n].bMap) == PH7_GC_DEAD ){` |
-|     3307 |  634 | `			VmGcSetColor(aDead[n].pPtr,aDead[n].bMap,PH7_GC_BLACK);` |
-|     1653 |  635 | `		}` |
-|     1654 |  636 | `	}` |
-|     3317 |  637 | `	for( n = 0 ; n < nDead ; ++n ){` |
-|     3307 |  638 | `		aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
-|     3307 |  639 | `		if( aDead[n].bMap ){` |
-|     1623 |  640 | `			PH7_HashmapUnref((ph7_hashmap *)aDead[n].pPtr);` |
-|      812 |  641 | `		}else{` |
-|     1685 |  642 | `			PH7_ClassInstanceUnref((ph7_class_instance *)aDead[n].pPtr);` |
+|       19 |  631 | `	aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
+|    30661 |  632 | `	for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  633 | `		if( VmGcColor(aDead[n].pPtr,aDead[n].bMap) == PH7_GC_DEAD ){` |
+|    30643 |  634 | `			VmGcSetColor(aDead[n].pPtr,aDead[n].bMap,PH7_GC_BLACK);` |
+|    15321 |  635 | `		}` |
+|    15322 |  636 | `	}` |
+|    30661 |  637 | `	for( n = 0 ; n < nDead ; ++n ){` |
+|    30643 |  638 | `		aDead = (VmGcRef *)SySetBasePtr(&pVm->aGcDead);` |
+|    30643 |  639 | `		if( aDead[n].bMap ){` |
+|    14607 |  640 | `			PH7_HashmapUnref((ph7_hashmap *)aDead[n].pPtr);` |
+|     7304 |  641 | `		}else{` |
+|    16037 |  642 | `			PH7_ClassInstanceUnref((ph7_class_instance *)aDead[n].pPtr);` |
 |        - |  643 | `		}` |
-|     1654 |  644 | `	}` |
-|       11 |  645 | `	SySetReset(&pVm->aGcDead);` |
-|       11 |  646 | `	pVm->nGcCollected += nCollected;` |
-|       11 |  647 | `	VmGcAdjustThreshold(pVm,nCollected,nRoots);` |
-|       11 |  648 | `	pVm->bGcRunning = 0;` |
-|       11 |  649 | `	return nCollected;` |
-|       29 |  650 | `}` |
+|    15322 |  644 | `	}` |
+|       19 |  645 | `	SySetReset(&pVm->aGcDead);` |
+|       19 |  646 | `	pVm->nGcCollected += nCollected;` |
+|       19 |  647 | `	VmGcAdjustThreshold(pVm,nCollected,nRoots);` |
+|       19 |  648 | `	pVm->bGcRunning = 0;` |
+|       19 |  649 | `	return nCollected;` |
+|       34 |  650 | `}` |
 |        - |  651 | `/* ------------------------------------------------------------------- lifecycle */` |
 |        - |  652 |  |
-|     7925 |  653 | `PH7_PRIVATE void PH7_GcInit(ph7_vm *pVm)` |
+|     8445 |  653 | `PH7_PRIVATE void PH7_GcInit(ph7_vm *pVm)` |
 |        5 |  654 | `{` |
-|     7930 |  655 | `	pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;` |
-|     7930 |  656 | `	SySetInit(&pVm->aGcRoot,&pVm->sAllocator,sizeof(VmGcRef));` |
-|     7930 |  657 | `	SySetInit(&pVm->aGcWork,&pVm->sAllocator,sizeof(VmGcRef));` |
-|     7930 |  658 | `	SySetInit(&pVm->aGcAux,&pVm->sAllocator,sizeof(VmGcRef));` |
-|     7930 |  659 | `	SySetInit(&pVm->aGcDead,&pVm->sAllocator,sizeof(VmGcRef));` |
-|     7930 |  660 | `}` |
+|     8450 |  655 | `	pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;` |
+|     8450 |  656 | `	SySetInit(&pVm->aGcRoot,&pVm->sAllocator,sizeof(VmGcRef));` |
+|     8450 |  657 | `	SySetInit(&pVm->aGcWork,&pVm->sAllocator,sizeof(VmGcRef));` |
+|     8450 |  658 | `	SySetInit(&pVm->aGcAux,&pVm->sAllocator,sizeof(VmGcRef));` |
+|     8450 |  659 | `	SySetInit(&pVm->aGcDead,&pVm->sAllocator,sizeof(VmGcRef));` |
+|     8450 |  660 | `}` |
 |        - |  661 | `/*` |
 |        - |  662 | ` * Forget every buffered root without touching the containers: ph7_vm_reset is` |
 |        - |  663 | ` * about to release the whole object pool, so a row that outlived it would name` |
@@ -694,11 +694,11 @@ Coverage: 406/423 lines (95.98%)
 |       16 |  684 | `	pVm->bGcWanted = 0;` |
 |       16 |  685 | `	pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;` |
 |       16 |  686 | `}` |
-|     6701 |  687 | `PH7_PRIVATE void PH7_GcRelease(ph7_vm *pVm)` |
+|     6995 |  687 | `PH7_PRIVATE void PH7_GcRelease(ph7_vm *pVm)` |
 |        5 |  688 | `{` |
-|     6706 |  689 | `	SySetRelease(&pVm->aGcRoot);` |
-|     6706 |  690 | `	SySetRelease(&pVm->aGcWork);` |
-|     6706 |  691 | `	SySetRelease(&pVm->aGcAux);` |
-|     6706 |  692 | `	SySetRelease(&pVm->aGcDead);` |
-|     6706 |  693 | `}` |
+|     7000 |  689 | `	SySetRelease(&pVm->aGcRoot);` |
+|     7000 |  690 | `	SySetRelease(&pVm->aGcWork);` |
+|     7000 |  691 | `	SySetRelease(&pVm->aGcAux);` |
+|     7000 |  692 | `	SySetRelease(&pVm->aGcDead);` |
+|     7000 |  693 | `}` |
 |        - |  694 |  |

@@ -89,19 +89,19 @@ Coverage: 719/885 lines (81.24%)
 |      - |   79 | ` * ordinary use (the process is exiting) and turns every leak-detecting run over` |
 |      - |   80 | ` * a corpus that spawns a failing child into a wall of reports. */` |
 |      - |   81 | `static ph7 *pFatalEngine = 0;` |
-|   1020 |   82 | `static void FatalSilentCode(int iCode)` |
+|   1246 |   82 | `static void FatalSilentCode(int iCode)` |
 |      4 |   83 | `{` |
-|   1024 |   84 | `	if( pFatalEngine ){` |
-|   1024 |   85 | `		ph7_release(pFatalEngine);` |
-|   1024 |   86 | `		pFatalEngine = 0;` |
-|    510 |   87 | `	}` |
-|   1024 |   88 | `	ph7_lib_shutdown();` |
-|   1024 |   89 | `	exit(iCode);` |
+|   1250 |   84 | `	if( pFatalEngine ){` |
+|   1250 |   85 | `		ph7_release(pFatalEngine);` |
+|   1250 |   86 | `		pFatalEngine = 0;` |
+|    623 |   87 | `	}` |
+|   1250 |   88 | `	ph7_lib_shutdown();` |
+|   1250 |   89 | `	exit(iCode);` |
 |    ! 0 |   90 | `}` |
-|   1016 |   91 | `static void FatalSilent(void)` |
+|   1242 |   91 | `static void FatalSilent(void)` |
 |      4 |   92 | `{` |
-|   1020 |   93 | `	FatalSilentCode(255);` |
-|    508 |   94 | `}` |
+|   1246 |   93 | `	FatalSilentCode(255);` |
+|    621 |   94 | `}` |
 |      - |   95 | `/*` |
 |      - |   96 | ` * Display the banner,a help message and exit.` |
 |      - |   97 | ` */` |
@@ -183,16 +183,16 @@ Coverage: 719/885 lines (81.24%)
 |      - |  173 | ` * Expand callback for the PHP_BINARY constant.` |
 |      - |  174 | ` * pUserData points to the resolved binary path.` |
 |      - |  175 | ` */` |
-|    695 |  176 | `static void PHL_PhpBinaryConst(ph7_value *pVal,void *pUserData)` |
+|    855 |  176 | `static void PHL_PhpBinaryConst(ph7_value *pVal,void *pUserData)` |
 |      5 |  177 | `{` |
-|    700 |  178 | `	ph7_value_string(pVal,(const char *)pUserData,-1);` |
-|    700 |  179 | `}` |
+|    860 |  178 | `	ph7_value_string(pVal,(const char *)pUserData,-1);` |
+|    860 |  179 | `}` |
 |      - |  180 | `/*` |
 |      - |  181 | ` * Resolve the absolute path of the running interpreter.` |
 |      - |  182 | ` * Falls back to argv[0] verbatim (e.g. bare PATH invocation):` |
 |      - |  183 | ` * consumers spawning it again go through the shell, which re-resolves it.` |
 |      - |  184 | ` */` |
-|   6561 |  185 | `static const char * PHL_ResolveBinaryPath(const char *zArgv0)` |
+|   6855 |  185 | `static const char * PHL_ResolveBinaryPath(const char *zArgv0)` |
 |      5 |  186 | `{` |
 |      - |  187 | `#ifdef __WINNT__` |
 |      5 |  188 | `	DWORD nLen = GetModuleFileNameA(0,zPhlBinaryPath,(DWORD)sizeof(zPhlBinaryPath));` |
@@ -200,12 +200,12 @@ Coverage: 719/885 lines (81.24%)
 |      5 |  190 | `		return zPhlBinaryPath;` |
 |      - |  191 | `	}` |
 |      - |  192 | `#else` |
-|   6561 |  193 | `	if( realpath(zArgv0,zPhlBinaryPath) != 0 ){` |
-|   6561 |  194 | `		return zPhlBinaryPath;` |
+|   6855 |  193 | `	if( realpath(zArgv0,zPhlBinaryPath) != 0 ){` |
+|   6855 |  194 | `		return zPhlBinaryPath;` |
 |      - |  195 | `	}` |
 |      - |  196 | `#endif` |
 |    ! 0 |  197 | `	return zArgv0;` |
-|   3280 |  198 | `}` |
+|   3427 |  198 | `}` |
 |      - |  199 | `/*` |
 |      - |  200 | ` * VM output consumer callback.` |
 |      - |  201 | ` * Each time the virtual machine generates some outputs,the following` |
@@ -215,9 +215,9 @@ Coverage: 719/885 lines (81.24%)
 |      - |  205 | ` * This function is registered later via a call to ph7_vm_config()` |
 |      - |  206 | ` * with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.` |
 |      - |  207 | ` */` |
-| 101814 |  208 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
+| 129176 |  208 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
 |      5 |  209 | `{` |
-|  49942 |  210 | `	(void)pUserData;` |
+|  63623 |  210 | `	(void)pUserData;` |
 |      - |  211 | `#ifdef __WINNT__` |
 |      - |  212 | `	BOOL rc;` |
 |      5 |  213 | `	rc = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pOutput,(DWORD)nOutputLen,0,0);` |
@@ -227,23 +227,23 @@ Coverage: 719/885 lines (81.24%)
 |      - |  217 | `	}` |
 |      - |  218 | `#else` |
 |      - |  219 | `	ssize_t nWr;` |
-| 101814 |  220 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
-| 101814 |  221 | `	if( nWr < 0 ){` |
+| 129176 |  220 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
+| 129176 |  221 | `	if( nWr < 0 ){` |
 |      - |  222 | `		/* Abort processing */` |
 |    ! 0 |  223 | `		return PH7_ABORT;` |
 |      - |  224 | `	}` |
 |      - |  225 | `#endif /* __WINT__ */` |
 |      - |  226 | `	/* All done,VM output was redirected to STDOUT */` |
-| 101819 |  227 | `	return PH7_OK;` |
-|  49947 |  228 | `}` |
+| 129181 |  227 | `	return PH7_OK;` |
+|  63628 |  228 | `}` |
 |      - |  229 | `/*` |
 |      - |  230 | ` * VM diagnostics consumer (PH7_VM_CONFIG_ERR_STREAM): the log copy of a runtime` |
 |      - |  231 | ` * warning/notice/deprecation and the uncaught-exception fatal go here — STDERR —` |
 |      - |  232 | ` * so program STDOUT stays clean, matching stock CLI php.` |
 |      - |  233 | ` */` |
-|   2634 |  234 | `static int Error_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
+|   2870 |  234 | `static int Error_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
 |      5 |  235 | `{` |
-|   1317 |  236 | `	(void)pUserData;` |
+|   1435 |  236 | `	(void)pUserData;` |
 |      - |  237 | `#ifdef __WINNT__` |
 |      - |  238 | `	BOOL rc;` |
 |      5 |  239 | `	rc = WriteFile(GetStdHandle(STD_ERROR_HANDLE),pOutput,(DWORD)nOutputLen,0,0);` |
@@ -253,15 +253,15 @@ Coverage: 719/885 lines (81.24%)
 |      - |  243 | `	}` |
 |      - |  244 | `#else` |
 |      - |  245 | `	ssize_t nWr;` |
-|   2634 |  246 | `	nWr = write(STDERR_FILENO,pOutput,nOutputLen);` |
-|   2634 |  247 | `	if( nWr < 0 ){` |
+|   2870 |  246 | `	nWr = write(STDERR_FILENO,pOutput,nOutputLen);` |
+|   2870 |  247 | `	if( nWr < 0 ){` |
 |      - |  248 | `		/* Abort processing */` |
 |    ! 0 |  249 | `		return PH7_ABORT;` |
 |      - |  250 | `	}` |
 |      - |  251 | `#endif /* __WINNT__ */` |
 |      - |  252 | `	/* All done, VM diagnostics were redirected to STDERR */` |
-|   2639 |  253 | `	return PH7_OK;` |
-|   1322 |  254 | `}` |
+|   2875 |  253 | `	return PH7_OK;` |
+|   1440 |  254 | `}` |
 |      - |  255 | `/*` |
 |      - |  256 | ` * Parse an unsigned-long testing knob from the environment (PHL_MAX_ALLOC /` |
 |      - |  257 | ` * PHL_MAX_INPUT / PHL_MAX_RECURSION / PHL_MAX_NATIVE_DEPTH). Returns 1 and writes` |
@@ -271,33 +271,33 @@ Coverage: 719/885 lines (81.24%)
 |      - |  261 | ` * trailing garbage, or is zero — so a typo like "-1" or "abc" is ignored` |
 |      - |  262 | ` * rather than silently reinterpreted (strtoul would wrap "-1" to ULONG_MAX).` |
 |      - |  263 | ` */` |
-|  28864 |  264 | `static int PHL_EnvULong(const char *zName,unsigned long uFloor,unsigned long uCeil,unsigned long *pOut)` |
+|  30492 |  264 | `static int PHL_EnvULong(const char *zName,unsigned long uFloor,unsigned long uCeil,unsigned long *pOut)` |
 |      5 |  265 | `{` |
-|  28869 |  266 | `	const char *zVal = getenv(zName);` |
-|  28869 |  267 | `	char *zEnd = 0;` |
+|  30497 |  266 | `	const char *zVal = getenv(zName);` |
+|  30497 |  267 | `	char *zEnd = 0;` |
 |      - |  268 | `	unsigned long uMax;` |
-|  28869 |  269 | `	if( zVal == 0 \|\| zVal[0] == 0 ){` |
-|  28855 |  270 | `		return 0;` |
+|  30497 |  269 | `	if( zVal == 0 \|\| zVal[0] == 0 ){` |
+|  30483 |  270 | `		return 0;` |
 |      - |  271 | `	}` |
 |      - |  272 | `	/* Reject a leading sign outright: strtoul silently negates "-1" to` |
 |      - |  273 | `	 * ULONG_MAX, turning a typo into an effectively-unlimited cap. */` |
-|     17 |  274 | `	if( zVal[0] == '-' \|\| zVal[0] == '+' ){` |
+|     16 |  274 | `	if( zVal[0] == '-' \|\| zVal[0] == '+' ){` |
 |    ! 0 |  275 | `		return 0;` |
 |      - |  276 | `	}` |
-|     17 |  277 | `	errno = 0;` |
-|     17 |  278 | `	uMax = strtoul(zVal,&zEnd,10);` |
-|     17 |  279 | `	if( errno != 0 \|\| zEnd == zVal \|\| *zEnd != 0 \|\| uMax == 0 ){` |
+|     16 |  277 | `	errno = 0;` |
+|     16 |  278 | `	uMax = strtoul(zVal,&zEnd,10);` |
+|     16 |  279 | `	if( errno != 0 \|\| zEnd == zVal \|\| *zEnd != 0 \|\| uMax == 0 ){` |
 |    ! 0 |  280 | `		return 0; /* non-numeric, trailing junk, overflow, or zero */` |
 |      - |  281 | `	}` |
-|     17 |  282 | `	if( uMax < uFloor ){` |
+|     16 |  282 | `	if( uMax < uFloor ){` |
 |    ! 0 |  283 | `		uMax = uFloor;` |
 |    ! 0 |  284 | `	}` |
-|     17 |  285 | `	if( uMax > uCeil ){` |
+|     16 |  285 | `	if( uMax > uCeil ){` |
 |    ! 0 |  286 | `		uMax = uCeil;` |
 |    ! 0 |  287 | `	}` |
-|     17 |  288 | `	*pOut = uMax;` |
-|     17 |  289 | `	return 1;` |
-|  14415 |  290 | `}` |
+|     16 |  288 | `	*pOut = uMax;` |
+|     16 |  289 | `	return 1;` |
+|  15229 |  290 | `}` |
 |      - |  291 | `/*` |
 |      - |  292 | ` * php's ini scanner is not line-oriented, and a php.ini VALUE is not a line.` |
 |      - |  293 | ` * A quoted run is a scanner STATE that keeps going past the newline, so where` |
@@ -322,22 +322,22 @@ Coverage: 719/885 lines (81.24%)
 |      - |  312 | ` * closes the directive, and running to the end of the source when a quote never` |
 |      - |  313 | ` * closes.` |
 |      - |  314 | ` */` |
-|   1385 |  315 | `static const char * PHL_IniSkipEol(const char *z,const char *zEnd)` |
+|   1585 |  315 | `static const char * PHL_IniSkipEol(const char *z,const char *zEnd)` |
 |      4 |  316 | `{` |
-|   1523 |  317 | `	while( z < zEnd && z[0] != '\n' && z[0] != '\r' ){` |
+|   1723 |  317 | `	while( z < zEnd && z[0] != '\n' && z[0] != '\r' ){` |
 |    134 |  318 | `		z++;` |
 |    ! 0 |  319 | `	}` |
-|   1389 |  320 | `	return z;` |
+|   1589 |  320 | `	return z;` |
 |      4 |  321 | `}` |
-|   1487 |  322 | `static const char * PHL_IniEatEol(const char *z,const char *zEnd)` |
+|   1687 |  322 | `static const char * PHL_IniEatEol(const char *z,const char *zEnd)` |
 |      4 |  323 | `{` |
-|   1491 |  324 | `	if( z < zEnd && z[0] == '\r' ){` |
+|   1691 |  324 | `	if( z < zEnd && z[0] == '\r' ){` |
 |      2 |  325 | `		z++;` |
 |      1 |  326 | `	}` |
-|   1491 |  327 | `	if( z < zEnd && z[0] == '\n' ){` |
-|   1491 |  328 | `		z++;` |
-|    743 |  329 | `	}` |
-|   1491 |  330 | `	return z;` |
+|   1691 |  327 | `	if( z < zEnd && z[0] == '\n' ){` |
+|   1691 |  328 | `		z++;` |
+|    843 |  329 | `	}` |
+|   1691 |  330 | `	return z;` |
 |      4 |  331 | `}` |
 |      - |  332 | `/*` |
 |      - |  333 | ` * Hand one directive over. The value's TEXT is what travels: the engine runs` |
@@ -346,18 +346,18 @@ Coverage: 719/885 lines (81.24%)
 |      - |  336 | ` * unquoting here would hand that grammar a constant name where php hands it` |
 |      - |  337 | ` * four letters.` |
 |      - |  338 | ` */` |
-|   1369 |  339 | `static void PHL_ApplyIniValue(ph7 *pEngine,const char *zName,size_t nName,` |
+|   1569 |  339 | `static void PHL_ApplyIniValue(ph7 *pEngine,const char *zName,size_t nName,` |
 |      - |  340 | `	const char *zVal,size_t nVal,const char *zFile,unsigned int nLine,int iStop)` |
 |      4 |  341 | `{` |
 |      - |  342 | `	char zNameBuf[128];` |
 |      - |  343 | `	char zStack[512];` |
-|   1373 |  344 | `	char *zValue = zStack;   /* heap-backed past what the stack buffer holds */` |
-|   1373 |  345 | `	if( nName == 0 \|\| nName >= sizeof(zNameBuf) ){` |
+|   1573 |  344 | `	char *zValue = zStack;   /* heap-backed past what the stack buffer holds */` |
+|   1573 |  345 | `	if( nName == 0 \|\| nName >= sizeof(zNameBuf) ){` |
 |      2 |  346 | `		return;` |
 |      - |  347 | `	}` |
-|   1371 |  348 | `	memcpy(zNameBuf,zName,nName);` |
-|   1371 |  349 | `	zNameBuf[nName] = 0;` |
-|   1371 |  350 | `	if( nVal + 1 > sizeof(zStack) ){` |
+|   1571 |  348 | `	memcpy(zNameBuf,zName,nName);` |
+|   1571 |  349 | `	zNameBuf[nName] = 0;` |
+|   1571 |  350 | `	if( nVal + 1 > sizeof(zStack) ){` |
 |      - |  351 | `		/* php has no ceiling on an ini value, and a real one can be long:` |
 |      - |  352 | `		 * PHPUnit hands its child a ~700-byte redaction pattern. Truncating` |
 |      - |  353 | `		 * at a fixed width stored half a value, and cutting one in the` |
@@ -367,15 +367,15 @@ Coverage: 719/885 lines (81.24%)
 |    ! 0 |  357 | `			return;` |
 |      - |  358 | `		}` |
 |      1 |  359 | `	}` |
-|   1371 |  360 | `	if( nVal > 0 ){` |
-|   1367 |  361 | `		memcpy(zValue,zVal,nVal);` |
-|    681 |  362 | `	}` |
-|   1371 |  363 | `	zValue[nVal] = 0;` |
-|   1371 |  364 | `	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zNameBuf,zValue,zFile,nLine,iStop);` |
-|   1371 |  365 | `	if( zValue != zStack ){` |
+|   1571 |  360 | `	if( nVal > 0 ){` |
+|   1567 |  361 | `		memcpy(zValue,zVal,nVal);` |
+|    781 |  362 | `	}` |
+|   1571 |  363 | `	zValue[nVal] = 0;` |
+|   1571 |  364 | `	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zNameBuf,zValue,zFile,nLine,iStop);` |
+|   1571 |  365 | `	if( zValue != zStack ){` |
 |      3 |  366 | `		free(zValue);` |
 |      1 |  367 | `	}` |
-|    688 |  368 | `}` |
+|    788 |  368 | `}` |
 |      - |  369 | `/*` |
 |      - |  370 | `` * Hand over a `[` php's scanner never closes. It stands in the queue where a`` |
 |      - |  371 | ` * directive would, carries no name, and takes the whole source down with it.` |
@@ -394,26 +394,26 @@ Coverage: 719/885 lines (81.24%)
 |      - |  384 | ` * engine owns that table, next to the value grammar that shares its bool` |
 |      - |  385 | ` * words; a second copy of it out here would drift away from it.` |
 |      - |  386 | ` */` |
-|   1447 |  387 | `static void PHL_ScreenIniStmt(ph7 *pEngine,const char *zStmt,size_t nStmt,` |
+|   1647 |  387 | `static void PHL_ScreenIniStmt(ph7 *pEngine,const char *zStmt,size_t nStmt,` |
 |      - |  388 | `	const char *zFile,unsigned int nLine)` |
 |      4 |  389 | `{` |
 |      - |  390 | `	char zStack[512];` |
-|   1451 |  391 | `	char *zText = zStack;` |
-|   1451 |  392 | `	if( nStmt + 1 > sizeof(zStack) ){` |
+|   1651 |  391 | `	char *zText = zStack;` |
+|   1651 |  392 | `	if( nStmt + 1 > sizeof(zStack) ){` |
 |    ! 0 |  393 | `		zText = (char *)malloc(nStmt + 1);` |
 |    ! 0 |  394 | `		if( zText == 0 ){` |
 |    ! 0 |  395 | `			return;` |
 |      - |  396 | `		}` |
 |    ! 0 |  397 | `	}` |
-|   1451 |  398 | `	if( nStmt > 0 ){` |
-|   1451 |  399 | `		memcpy(zText,zStmt,nStmt);` |
-|    723 |  400 | `	}` |
-|   1451 |  401 | `	zText[nStmt] = 0;` |
-|   1451 |  402 | `	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zText,"",zFile,nLine,PH7_INI_STOP_STMT);` |
-|   1451 |  403 | `	if( zText != zStack ){` |
+|   1651 |  398 | `	if( nStmt > 0 ){` |
+|   1651 |  399 | `		memcpy(zText,zStmt,nStmt);` |
+|    823 |  400 | `	}` |
+|   1651 |  401 | `	zText[nStmt] = 0;` |
+|   1651 |  402 | `	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zText,"",zFile,nLine,PH7_INI_STOP_STMT);` |
+|   1651 |  403 | `	if( zText != zStack ){` |
 |    ! 0 |  404 | `		free(zText);` |
 |    ! 0 |  405 | `	}` |
-|    727 |  406 | `}` |
+|    827 |  406 | `}` |
 |      - |  407 | `/*` |
 |      - |  408 | `` * Hand over a `${` run found inside a section NAME, from its `$` to the end of`` |
 |      - |  409 | ` * the source. php's ST_VARNAME and ST_VAR_FALLBACK are reached from its section` |
@@ -635,32 +635,32 @@ Coverage: 719/885 lines (81.24%)
 |      - |  625 | ` * builds out of every -d -- and apply the directives it holds. nLine is the line` |
 |      - |  626 | ` * the first byte sits on: 1 for a file, and 6 for the -d buffer (see the caller).` |
 |      - |  627 | ` */` |
-|    805 |  628 | `static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,` |
+|    875 |  628 | `static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,` |
 |      - |  629 | `	const char *zFile,unsigned int nLine)` |
 |      4 |  630 | `{` |
-|    809 |  631 | `	const char *z = zSrc;` |
-|    809 |  632 | `	const char *zEnd = &zSrc[nSrc];` |
-|   3671 |  633 | `	while( z < zEnd ){` |
+|    879 |  631 | `	const char *z = zSrc;` |
+|    879 |  632 | `	const char *zEnd = &zSrc[nSrc];` |
+|   4141 |  633 | `	while( z < zEnd ){` |
 |      - |  634 | `		const char *zName,*zNameEnd,*zVal,*zValEnd;` |
 |      - |  635 | `		unsigned int nDir;` |
-|   2952 |  636 | `		int bRunaway = 0;` |
+|   3352 |  636 | `		int bRunaway = 0;` |
 |      - |  637 | `		int iStop;` |
-|   2952 |  638 | `		int bTab = 0;` |
-|   2952 |  639 | `		int bOffset = 0;` |
-|   2952 |  640 | `		const char *zBlank = z;` |
-|   4476 |  641 | `		while( z < zEnd && (z[0] == ' ' \|\| z[0] == '\t') ){` |
+|   3352 |  638 | `		int bTab = 0;` |
+|   3352 |  639 | `		int bOffset = 0;` |
+|   3352 |  640 | `		const char *zBlank = z;` |
+|   5076 |  641 | `		while( z < zEnd && (z[0] == ' ' \|\| z[0] == '\t') ){` |
 |     34 |  642 | `			bTab = bTab \|\| z[0] == '\t';` |
 |     34 |  643 | `			z++;` |
 |    ! 0 |  644 | `		}` |
-|   2952 |  645 | `		if( z >= zEnd ){` |
+|   3352 |  645 | `		if( z >= zEnd ){` |
 |    ! 0 |  646 | `			break;` |
 |      - |  647 | `		}` |
-|   2952 |  648 | `		if( z[0] == '\n' \|\| z[0] == '\r' ){` |
-|   1379 |  649 | `			z = PHL_IniEatEol(z,zEnd);` |
-|   1379 |  650 | `			nLine++;` |
-|   1379 |  651 | `			continue;` |
+|   3352 |  648 | `		if( z[0] == '\n' \|\| z[0] == '\r' ){` |
+|   1579 |  649 | `			z = PHL_IniEatEol(z,zEnd);` |
+|   1579 |  650 | `			nLine++;` |
+|   1579 |  651 | `			continue;` |
 |      - |  652 | `		}` |
-|   1577 |  653 | `		if( z[0] == ';' \|\| z[0] == '#' ){` |
+|   1777 |  653 | `		if( z[0] == ';' \|\| z[0] == '#' ){` |
 |      - |  654 | `			/* comments: the newline behind them is counted above */` |
 |      8 |  655 | `			z = PHL_IniSkipEol(z,zEnd);` |
 |      8 |  656 | `			continue;` |
@@ -673,10 +673,10 @@ Coverage: 719/885 lines (81.24%)
 |      - |  663 | ``		 * `{LABEL}"["` behind it, which then trims it back off the name. So`` |
 |      - |  664 | ``		 * `\t[s]` is a section header and `  [s]` is the OFFSET `  `["s"] --`` |
 |      - |  665 | ``		 * an entry when an `=` follows it, and a syntax error when none does. */`` |
-|   1569 |  666 | `		if( z[0] != '=' && !bTab ){` |
-|   1555 |  667 | `			z = zBlank;` |
-|    775 |  668 | `		}` |
-|   1569 |  669 | `		if( z[0] == '[' ){` |
+|   1769 |  666 | `		if( z[0] != '=' && !bTab ){` |
+|   1755 |  667 | `			z = zBlank;` |
+|    875 |  668 | `		}` |
+|   1769 |  669 | `		if( z[0] == '[' ){` |
 |      - |  670 | `			/* A section NAME is one scanner run, and the only thing that closes` |
 |      - |  671 | `` 			 * it is the `]`. A newline does not: php's rule has none, so a `[` `` |
 |      - |  672 | ``			 * with no `]` behind it on its own line runs out of source and`` |
@@ -715,8 +715,8 @@ Coverage: 719/885 lines (81.24%)
 |     66 |  705 | `			nLine++;` |
 |     66 |  706 | `			continue;` |
 |      - |  707 | `		}` |
-|   1451 |  708 | `		nDir = nLine;` |
-|   1451 |  709 | `		zName = z;` |
+|   1651 |  708 | `		nDir = nLine;` |
+|   1651 |  709 | `		zName = z;` |
 |      - |  710 | ``		/* php's `{LABEL}` is a run of LABEL_CHARs, and a TAB is not one: it`` |
 |      - |  711 | ``		 * ends the name and the statement with it, so `xx\tprecision=9` is a`` |
 |      - |  712 | `		 * bare label php drops and then an ordinary entry. The bytes its` |
@@ -724,11 +724,11 @@ Coverage: 719/885 lines (81.24%)
 |      - |  714 | `		 * they travel INSIDE the text handed over below -- the engine owns the` |
 |      - |  715 | `		 * table that says which of them refuse the source -- and only the` |
 |      - |  716 | `		 * three that open a statement of their own stop the run out here. */` |
-|  17371 |  717 | `		while( z < zEnd && z[0] != '=' && z[0] != '\n' && z[0] != '\r'` |
-|  22514 |  718 | `		 && z[0] != '\t' && z[0] != ';' && z[0] != '[' ){` |
-|  14481 |  719 | `			z++;` |
+|  20331 |  717 | `		while( z < zEnd && z[0] != '=' && z[0] != '\n' && z[0] != '\r'` |
+|  26454 |  718 | `		 && z[0] != '\t' && z[0] != ';' && z[0] != '[' ){` |
+|  17041 |  719 | `			z++;` |
 |      4 |  720 | `		}` |
-|   1451 |  721 | `		if( z < zEnd && z[0] == '\t' ){` |
+|   1651 |  721 | `		if( z < zEnd && z[0] == '\t' ){` |
 |      - |  722 | ``			/* `{TABS_AND_SPACES}*[=]` outruns the rule that throws a blank run`` |
 |      - |  723 | ``			 * away, so a TAB with nothing but blanks between it and an `=` is`` |
 |      - |  724 | `			 * still this directive's; anything else behind it is a statement of` |
@@ -741,12 +741,12 @@ Coverage: 719/885 lines (81.24%)
 |      4 |  731 | `				z = zPeek;` |
 |      2 |  732 | `			}` |
 |      5 |  733 | `		}` |
-|   1451 |  734 | `		bOffset = z < zEnd && z[0] == '[';` |
-|   1451 |  735 | `		zNameEnd = z;` |
-|   2502 |  736 | `		while( zNameEnd > zName && (zNameEnd[-1] == ' ' \|\| zNameEnd[-1] == '\t') ){` |
+|   1651 |  734 | `		bOffset = z < zEnd && z[0] == '[';` |
+|   1651 |  735 | `		zNameEnd = z;` |
+|   2802 |  736 | `		while( zNameEnd > zName && (zNameEnd[-1] == ' ' \|\| zNameEnd[-1] == '\t') ){` |
 |    328 |  737 | `			zNameEnd--;` |
 |    ! 0 |  738 | `		}` |
-|   1451 |  739 | `		if( bOffset ){` |
+|   1651 |  739 | `		if( bOffset ){` |
 |      - |  740 | ``			/* `{LABEL}"["` is one token, so the `[` goes to the engine WITH the`` |
 |      - |  741 | ``			 * run in front of it: that is how it tells `on[x] = 1`, an entry`` |
 |      - |  742 | ``			 * whose bool word the offset rule outran, from `x&y[z] = 1`, whose`` |
@@ -785,51 +785,51 @@ Coverage: 719/885 lines (81.24%)
 |      - |  775 | ``		/* An `=` with nothing in front of it leaves the run empty, and php's`` |
 |      - |  776 | `		 * scanner has a token there all the same. An offset was screened above,` |
 |      - |  777 | ``		 * with the `[` that decides how its run is read. */`` |
-|   1417 |  778 | `		if( !bOffset ){` |
-|   2794 |  779 | `			PHL_ScreenIniStmt(pEngine,zName,` |
-|   1395 |  780 | `				zNameEnd > zName ? (size_t)(zNameEnd - zName) : (size_t)(z < zEnd ? 1 : 0),` |
-|    697 |  781 | `				zFile,nDir);` |
-|    697 |  782 | `		}` |
-|   1417 |  783 | `		if( z >= zEnd \|\| z[0] != '=' ){` |
+|   1617 |  778 | `		if( !bOffset ){` |
+|   3194 |  779 | `			PHL_ScreenIniStmt(pEngine,zName,` |
+|   1595 |  780 | `				zNameEnd > zName ? (size_t)(zNameEnd - zName) : (size_t)(z < zEnd ? 1 : 0),` |
+|    797 |  781 | `				zFile,nDir);` |
+|    797 |  782 | `		}` |
+|   1617 |  783 | `		if( z >= zEnd \|\| z[0] != '=' ){` |
 |      - |  784 | `			/* php's php.ini callback ignores a statement that carries no` |
 |      - |  785 | `			 * value, so a bare name neither defines the entry nor sets it to` |
 |      - |  786 | ``			 * "1" -- `parse_ini_string("precision")` is the empty array on`` |
 |      - |  787 | `			 * both sides of the fence for the same reason. */` |
 |     44 |  788 | `			continue;` |
 |      - |  789 | `		}` |
-|   1373 |  790 | `		z++;   /* past the '=' */` |
-|   1373 |  791 | `		zVal = z;` |
-|   6924 |  792 | `		while( z < zEnd ){` |
-|   6912 |  793 | `			int c = (unsigned char)z[0];` |
-|   6912 |  794 | `			if( c == '\n' \|\| c == '\r' \|\| c == ';' ){` |
-|    673 |  795 | `				break;` |
+|   1573 |  790 | `		z++;   /* past the '=' */` |
+|   1573 |  791 | `		zVal = z;` |
+|   7376 |  792 | `		while( z < zEnd ){` |
+|   7364 |  793 | `			int c = (unsigned char)z[0];` |
+|   7364 |  794 | `			if( c == '\n' \|\| c == '\r' \|\| c == ';' ){` |
+|    773 |  795 | `				break;` |
 |      - |  796 | `			}` |
-|   5573 |  797 | `			if( c == '"' ){` |
-|     69 |  798 | `				const char *zQ = &z[1];` |
-|     69 |  799 | `				unsigned int nEat = 0;` |
-|    509 |  800 | `				while( zQ < zEnd && zQ[0] != '"' ){` |
-|    443 |  801 | `					if( zQ[0] == '\\' && &zQ[1] < zEnd ){` |
+|   5825 |  797 | `			if( c == '"' ){` |
+|     71 |  798 | `				const char *zQ = &z[1];` |
+|     71 |  799 | `				unsigned int nEat = 0;` |
+|    515 |  800 | `				while( zQ < zEnd && zQ[0] != '"' ){` |
+|    447 |  801 | `					if( zQ[0] == '\\' && &zQ[1] < zEnd ){` |
 |      - |  802 | ``						/* a tool that has to put a quote in a value writes `\"` */`` |
 |    ! 0 |  803 | `						zQ += 2;` |
 |    ! 0 |  804 | `						continue;` |
 |      - |  805 | `					}` |
-|    443 |  806 | `					if( zQ[0] == '\n' \|\| zQ[0] == '\r' ){` |
+|    447 |  806 | `					if( zQ[0] == '\n' \|\| zQ[0] == '\r' ){` |
 |     32 |  807 | `						zQ = PHL_IniEatEol(zQ,zEnd);` |
 |     32 |  808 | `						nEat++;` |
 |     32 |  809 | `						continue;` |
 |      - |  810 | `					}` |
-|    411 |  811 | `					zQ++;` |
+|    415 |  811 | `					zQ++;` |
 |      3 |  812 | `				}` |
-|     69 |  813 | `				nLine += nEat;` |
-|     69 |  814 | `				if( zQ >= zEnd ){` |
+|     71 |  813 | `				nLine += nEat;` |
+|     71 |  814 | `				if( zQ >= zEnd ){` |
 |     10 |  815 | `					bRunaway = 1;` |
 |     10 |  816 | `					z = zEnd;` |
 |     10 |  817 | `					break;` |
 |      - |  818 | `				}` |
-|     59 |  819 | `				z = &zQ[1];` |
-|     59 |  820 | `				continue;` |
+|     61 |  819 | `				z = &zQ[1];` |
+|     61 |  820 | `				continue;` |
 |      - |  821 | `			}` |
-|   5507 |  822 | `			if( c == '\'' ){` |
+|   5757 |  822 | `			if( c == '\'' ){` |
 |     22 |  823 | `				const char *zQ = &z[1];` |
 |    242 |  824 | `				while( zQ < zEnd && zQ[0] != '\'' ){` |
 |    220 |  825 | `					zQ++;` |
@@ -842,7 +842,7 @@ Coverage: 719/885 lines (81.24%)
 |     16 |  832 | `				z = &zQ[1];   /* no line counting: the raw rule is one match */` |
 |     16 |  833 | `				continue;` |
 |      - |  834 | `			}` |
-|   5485 |  835 | `			if( c == '$' ){` |
+|   5735 |  835 | `			if( c == '$' ){` |
 |      - |  836 | ``				/* php's VALUE_CHARS unit `("$"[^{])` carries the byte behind`` |
 |      - |  837 | ``				 * the `$` whatever that byte is -- the NEWLINE included -- and`` |
 |      - |  838 | `				 * one more when it is a backslash. So a value whose last byte` |
@@ -864,27 +864,27 @@ Coverage: 719/885 lines (81.24%)
 |     30 |  854 | `				z += z[1] == '\\' && &z[2] < zEnd ? 3 : 2;` |
 |     30 |  855 | `				continue;` |
 |      - |  856 | `			}` |
-|   5359 |  857 | `			z++;` |
+|   5609 |  857 | `			z++;` |
 |      4 |  858 | `		}` |
-|   1373 |  859 | `		zValEnd = z;` |
-|   1373 |  860 | `		iStop = PH7_INI_STOP_EOF;` |
-|   1373 |  861 | `		if( !bRunaway ){` |
+|   1573 |  859 | `		zValEnd = z;` |
+|   1573 |  860 | `		iStop = PH7_INI_STOP_EOF;` |
+|   1573 |  861 | `		if( !bRunaway ){` |
 |      - |  862 | ``			/* the `;` comment, and the newline that closes the directive, are`` |
 |      - |  863 | `			 * the scanner's own tokens rather than part of the value */` |
-|   1357 |  864 | `			int bComment = z < zEnd && z[0] == ';';` |
-|   1357 |  865 | `			z = PHL_IniSkipEol(z,zEnd);` |
+|   1557 |  864 | `			int bComment = z < zEnd && z[0] == ';';` |
+|   1557 |  865 | `			z = PHL_IniSkipEol(z,zEnd);` |
 |      - |  866 | `			/* Which of the two php refuses a value that merely ran out under.` |
 |      - |  867 | `			 * Its NEWLINE rule counts the line it eats, so a directive closed by` |
 |      - |  868 | `			 * one is dated a line low; a source that ends without one has no` |
 |      - |  869 | `			 * newline to give, and a comment left hanging there matches nothing` |
 |      - |  870 | `			 * at all -- what the parser gets then is the end of the input. */` |
-|   1357 |  871 | `			iStop = z < zEnd ? PH7_INI_STOP_EOL` |
-|    688 |  872 | `				: bComment ? PH7_INI_STOP_COMMENT : PH7_INI_STOP_EOF;` |
-|    676 |  873 | `		}` |
-|   2057 |  874 | `		PHL_ApplyIniValue(pEngine,zName,(size_t)(zNameEnd - zName),` |
-|   1369 |  875 | `			zVal,(size_t)(zValEnd - zVal),zFile,nDir,iStop);` |
+|   1557 |  871 | `			iStop = z < zEnd ? PH7_INI_STOP_EOL` |
+|    788 |  872 | `				: bComment ? PH7_INI_STOP_COMMENT : PH7_INI_STOP_EOF;` |
+|    776 |  873 | `		}` |
+|   2357 |  874 | `		PHL_ApplyIniValue(pEngine,zName,(size_t)(zNameEnd - zName),` |
+|   1569 |  875 | `			zVal,(size_t)(zValEnd - zVal),zFile,nDir,iStop);` |
 |      4 |  876 | `	}` |
-|    406 |  877 | `}` |
+|    441 |  877 | `}` |
 |      - |  878 | `/*` |
 |      - |  879 | `` * One -d, as php's ini builder writes it into that buffer: `name=value` and a`` |
 |      - |  880 | ` * newline, with the value wrapped in double quotes whenever its first byte is` |
@@ -893,40 +893,40 @@ Coverage: 719/885 lines (81.24%)
 |      - |  883 | `` * and `-d 'x=~~2'` store their own text where the same lines in a -c file are`` |
 |      - |  884 | `` * expressions. A bare `-d name` is written `name=1`. Returns the bytes written.`` |
 |      - |  885 | ` */` |
-|    505 |  886 | `static size_t PHL_IniDefineLine(const char *zPair,char *zOut)` |
+|    705 |  886 | `static size_t PHL_IniDefineLine(const char *zPair,char *zOut)` |
 |      4 |  887 | `{` |
-|    509 |  888 | `	const char *zEq = strchr(zPair,'=');` |
+|    709 |  888 | `	const char *zEq = strchr(zPair,'=');` |
 |      - |  889 | `	size_t n;` |
-|    509 |  890 | `	if( zEq == 0 ){` |
+|    709 |  890 | `	if( zEq == 0 ){` |
 |      2 |  891 | `		n = strlen(zPair);` |
 |      2 |  892 | `		memcpy(zOut,zPair,n);` |
 |      2 |  893 | `		memcpy(&zOut[n],"=1\n",sizeof("=1\n")-1);` |
 |      2 |  894 | `		return n + sizeof("=1\n") - 1;` |
 |      - |  895 | `	}` |
 |      - |  896 | `	{` |
-|    507 |  897 | `		const char *zV = &zEq[1];` |
-|    507 |  898 | `		size_t nHead = (size_t)(zEq - zPair) + 1;   /* the name and its '=' */` |
-|    507 |  899 | `		size_t nV = strlen(zV);` |
-|    751 |  900 | `		int bQuote = zV[0] != 0 && zV[0] != '"' && zV[0] != '\''` |
-|    911 |  901 | `		          && !((zV[0] >= '0' && zV[0] <= '9')` |
-|    324 |  902 | `		            \|\| (zV[0] >= 'a' && zV[0] <= 'z')` |
-|    123 |  903 | `		            \|\| (zV[0] >= 'A' && zV[0] <= 'Z'));` |
-|    507 |  904 | `		memcpy(zOut,zPair,nHead);` |
-|    507 |  905 | `		n = nHead;` |
-|    507 |  906 | `		if( bQuote ){` |
-|     35 |  907 | `			zOut[n++] = '"';` |
-|     16 |  908 | `		}` |
-|    507 |  909 | `		if( nV > 0 ){` |
-|    503 |  910 | `			memcpy(&zOut[n],zV,nV);` |
-|    503 |  911 | `			n += nV;` |
-|    249 |  912 | `		}` |
-|    507 |  913 | `		if( bQuote ){` |
-|     35 |  914 | `			zOut[n++] = '"';` |
-|     16 |  915 | `		}` |
-|    507 |  916 | `		zOut[n++] = '\n';` |
-|    507 |  917 | `		return n;` |
+|    707 |  897 | `		const char *zV = &zEq[1];` |
+|    707 |  898 | `		size_t nHead = (size_t)(zEq - zPair) + 1;   /* the name and its '=' */` |
+|    707 |  899 | `		size_t nV = strlen(zV);` |
+|   1051 |  900 | `		int bQuote = zV[0] != 0 && zV[0] != '"' && zV[0] != '\''` |
+|   1217 |  901 | `		          && !((zV[0] >= '0' && zV[0] <= '9')` |
+|    427 |  902 | `		            \|\| (zV[0] >= 'a' && zV[0] <= 'z')` |
+|    128 |  903 | `		            \|\| (zV[0] >= 'A' && zV[0] <= 'Z'));` |
+|    707 |  904 | `		memcpy(zOut,zPair,nHead);` |
+|    707 |  905 | `		n = nHead;` |
+|    707 |  906 | `		if( bQuote ){` |
+|     36 |  907 | `			zOut[n++] = '"';` |
+|     17 |  908 | `		}` |
+|    707 |  909 | `		if( nV > 0 ){` |
+|    703 |  910 | `			memcpy(&zOut[n],zV,nV);` |
+|    703 |  911 | `			n += nV;` |
+|    349 |  912 | `		}` |
+|    707 |  913 | `		if( bQuote ){` |
+|     36 |  914 | `			zOut[n++] = '"';` |
+|     17 |  915 | `		}` |
+|    707 |  916 | `		zOut[n++] = '\n';` |
+|    707 |  917 | `		return n;` |
 |      - |  918 | `	}` |
-|    256 |  919 | `}` |
+|    356 |  919 | `}` |
 |      - |  920 | `/*` |
 |      - |  921 | ` * Expand one path to the absolute, canonical name php would quote for it.` |
 |      - |  922 | `` * php runs the php.ini it opened through expand_filepath(), so `.`, `..` and a`` |
@@ -1106,28 +1106,28 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1096 | `/*` |
 |      - | 1097 | ` * Main program: Compile and execute the PHP file.` |
 |      - | 1098 | ` */` |
-|   7857 | 1099 | `int main(int argc,char **argv)` |
+|   8490 | 1099 | `int main(int argc,char **argv)` |
 |      5 | 1100 | `{` |
 |      - | 1101 | `	ph7 *pEngine; /* PH7 engine */` |
 |      - | 1102 | `	ph7_vm *pVm;  /* Compiled PHP program */` |
-|   7862 | 1103 | `	int dump_vm = 0;    /* Dump VM instructions if TRUE */` |
-|   7862 | 1104 | `	int run_code = 0;    /* Run inline code if TRUE */` |
-|   7862 | 1105 | `	int lint_mode = 0;   /* Syntax-check only (-l) if TRUE */` |
-|   7862 | 1106 | `	const char *zRunCode = 0; /* Inline code string */` |
-|   7862 | 1107 | `	int stdin_code = 0;       /* Execute a script read from stdin if TRUE */` |
-|   7862 | 1108 | `	char *zStdinCode = 0;     /* Script slurped from stdin */` |
-|   7862 | 1109 | `	int nStdinCode = 0;       /* Length of the stdin script */` |
-|   7862 | 1110 | ``	int dash_dash = 0;        /* Saw `--`: read from stdin, rest are script args */`` |
+|   8495 | 1103 | `	int dump_vm = 0;    /* Dump VM instructions if TRUE */` |
+|   8495 | 1104 | `	int run_code = 0;    /* Run inline code if TRUE */` |
+|   8495 | 1105 | `	int lint_mode = 0;   /* Syntax-check only (-l) if TRUE */` |
+|   8495 | 1106 | `	const char *zRunCode = 0; /* Inline code string */` |
+|   8495 | 1107 | `	int stdin_code = 0;       /* Execute a script read from stdin if TRUE */` |
+|   8495 | 1108 | `	char *zStdinCode = 0;     /* Script slurped from stdin */` |
+|   8495 | 1109 | `	int nStdinCode = 0;       /* Length of the stdin script */` |
+|   8495 | 1110 | ``	int dash_dash = 0;        /* Saw `--`: read from stdin, rest are script args */`` |
 |      - | 1111 | `#ifdef PHL_ENABLE_SERVER` |
-|   7862 | 1112 | `	int server_mode = 0;        /* Start built-in server if TRUE */` |
-|   7862 | 1113 | `	const char *zServerAddr = 0; /* host:port string */` |
-|   7862 | 1114 | `	const char *zDocRoot = ".";  /* Document root */` |
+|   8495 | 1112 | `	int server_mode = 0;        /* Start built-in server if TRUE */` |
+|   8495 | 1113 | `	const char *zServerAddr = 0; /* host:port string */` |
+|   8495 | 1114 | `	const char *zDocRoot = ".";  /* Document root */` |
 |      - | 1115 | `#endif` |
 |      - | 1116 | `	int n;              /* Script arguments */` |
 |      - | 1117 | `	int rc;` |
 |      - | 1118 | `	const char *azIniDefine[64]; /* -d name=value directives, in order */` |
-|   7862 | 1119 | `	int nIniDefine = 0;` |
-|   7862 | 1120 | `	const char *zIniFile = 0;    /* -c php.ini path */` |
+|   8495 | 1119 | `	int nIniDefine = 0;` |
+|   8495 | 1120 | `	const char *zIniFile = 0;    /* -c php.ini path */` |
 |      - | 1121 | `	/* php's CLI ignores SIGPIPE for the whole process, and this is PHL's CLI: a` |
 |      - | 1122 | `	 * write to a pipe or socket whose reader is gone then answers EPIPE instead of` |
 |      - | 1123 | `	 * KILLING the interpreter, which is the answer every php program is written` |
@@ -1137,7 +1137,7 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1127 | `	 * kills it and proc_close() reports 141. The networking subsystem used to set` |
 |      - | 1128 | `	 * this lazily at the first socket, so a program that opened none never had it. */` |
 |      - | 1129 | `#if defined(SIGPIPE) && defined(SIG_IGN)` |
-|   7857 | 1130 | `	signal(SIGPIPE,SIG_IGN);` |
+|   8490 | 1130 | `	signal(SIGPIPE,SIG_IGN);` |
 |      - | 1131 | `#endif` |
 |      - | 1132 | `	/* php's own module startup pins LC_CTYPE to C.UTF-8 and leaves every other` |
 |      - | 1133 | `` 	 * category at C, whatever the environment says -- so `setlocale(LC_CTYPE,'0')` `` |
@@ -1146,18 +1146,18 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1136 | `	 * also decides the encoding ext/gettext hands an answer back in when nothing` |
 |      - | 1137 | `	 * called bind_textdomain_codeset(). The engine LIBRARY does not touch the` |
 |      - | 1138 | `	 * process locale; this is the CLI, which is PHL's SAPI. */` |
-|   7862 | 1139 | `	if( setlocale(LC_CTYPE,"C.UTF-8") == 0 ){` |
+|   8495 | 1139 | `	if( setlocale(LC_CTYPE,"C.UTF-8") == 0 ){` |
 |      5 | 1140 | `		setlocale(LC_CTYPE,"C");` |
 |    ! 0 | 1141 | `	}` |
 |      - | 1142 | `	/* Process interpreter arguments first*/` |
-|   9894 | 1143 | `	for(n = 1 ; n < argc ; ++n ){` |
+|  10727 | 1143 | `	for(n = 1 ; n < argc ; ++n ){` |
 |      - | 1144 | `		int c;` |
-|   9355 | 1145 | `		if( argv[n][0] != '-' ){` |
+|  10075 | 1145 | `		if( argv[n][0] != '-' ){` |
 |      - | 1146 | `			/* No more interpreter arguments */` |
-|   7316 | 1147 | `			break;` |
+|   7836 | 1147 | `			break;` |
 |      - | 1148 | `		}` |
 |      - | 1149 | `		/* Check for long options */` |
-|   2043 | 1150 | `		if( argv[n][1] == '-' ){` |
+|   2243 | 1150 | `		if( argv[n][1] == '-' ){` |
 |     25 | 1151 | `			if( argv[n][2] == 0 ){` |
 |      - | 1152 | ``				/* php CLI parity: a bare `--` ends interpreter options; the`` |
 |      - | 1153 | ``				 * script is read from stdin and everything after `--` becomes`` |
@@ -1279,17 +1279,17 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1269 | `			}` |
 |     18 | 1270 | `			continue;` |
 |      - | 1271 | `		}` |
-|   2021 | 1272 | `		c = argv[n][1];` |
-|   2021 | 1273 | `		if( c == 'b' ){` |
+|   2221 | 1272 | `		c = argv[n][1];` |
+|   2221 | 1273 | `		if( c == 'b' ){` |
 |      - | 1274 | `			/* Dump byte-code instructions */` |
 |      3 | 1275 | `			dump_vm = 1;` |
-|   2020 | 1276 | `		}else if( c == 'l' ){` |
+|   2220 | 1276 | `		}else if( c == 'l' ){` |
 |      - | 1277 | `			/* Syntax-check only (lint) the file argument that follows */` |
-|    358 | 1278 | `			lint_mode = 1;` |
-|   1842 | 1279 | `		}else if( c == 'i' ){` |
+|    357 | 1278 | `			lint_mode = 1;` |
+|   2042 | 1279 | `		}else if( c == 'i' ){` |
 |      - | 1280 | `			/* Display interpreter information and exit */` |
 |      2 | 1281 | `			Info();` |
-|   1664 | 1282 | `		}else if( c == 'm' ){` |
+|   1864 | 1282 | `		}else if( c == 'm' ){` |
 |      - | 1283 | ``			/* php CLI parity: `-m` lists the loaded modules, php's two sections`` |
 |      - | 1284 | `			 * and its case-insensitive order. PHL loads no Zend extension, so` |
 |      - | 1285 | `			 * that section is always the header and nothing under it -- which` |
@@ -1304,20 +1304,20 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1294 | `				"foreach (get_loaded_extensions(true) as $x) { echo $x, \"\n\"; }"` |
 |      - | 1295 | `				"echo \"\n\";";` |
 |      3 | 1296 | `			run_code = 1;` |
-|   1662 | 1297 | `		}else if( c == 'f' ){` |
+|   1862 | 1297 | `		}else if( c == 'f' ){` |
 |      - | 1298 | ``			/* php CLI parity: `-f <file>` explicitly names the script to run.`` |
 |      - | 1299 | `			 * The path follows as the next argument, which the positional` |
 |      - | 1300 | `			 * file handling below already consumes, so treat -f as a no-op. */` |
 |    ! 0 | 1301 | `			continue;` |
-|   1661 | 1302 | `		}else if( c == 'r' ){` |
+|   1861 | 1302 | `		}else if( c == 'r' ){` |
 |      - | 1303 | `			/* Run inline PHP code from next argument (php -r style) */` |
-|    570 | 1304 | `			if( n + 1 >= argc ){` |
+|    571 | 1304 | `			if( n + 1 >= argc ){` |
 |      - | 1305 | `				/* Missing code argument */` |
 |    ! 0 | 1306 | `				FatalCode("Missing code argument for -r",1);` |
 |    ! 0 | 1307 | `			}` |
-|    570 | 1308 | `			zRunCode = argv[++n];` |
-|    570 | 1309 | `			run_code = 1;` |
-|   1377 | 1310 | `		}else if( c == 'S' ){` |
+|    571 | 1308 | `			zRunCode = argv[++n];` |
+|    571 | 1309 | `			run_code = 1;` |
+|   1577 | 1310 | `		}else if( c == 'S' ){` |
 |      - | 1311 | `			/* Start built-in development server */` |
 |      - | 1312 | `#ifdef PHL_ENABLE_SERVER` |
 |     32 | 1313 | `			if( n + 1 >= argc ){` |
@@ -1328,7 +1328,7 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1318 | `#else` |
 |      - | 1319 | `			Fatal("Built-in server not available (compiled without PHL_ENABLE_SERVER)");` |
 |      - | 1320 | `#endif` |
-|   1077 | 1321 | `		}else if( c == 't' ){` |
+|   1277 | 1321 | `		}else if( c == 't' ){` |
 |      - | 1322 | `			/* Set document root for the server */` |
 |      - | 1323 | `#ifdef PHL_ENABLE_SERVER` |
 |     32 | 1324 | `			if( n + 1 >= argc ){` |
@@ -1338,21 +1338,21 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1328 | `#else` |
 |      - | 1329 | `			Fatal("Built-in server not available (compiled without PHL_ENABLE_SERVER)");` |
 |      - | 1330 | `#endif` |
-|   1045 | 1331 | `		}else if( c == 'v' ){` |
+|   1245 | 1331 | `		}else if( c == 'v' ){` |
 |      - | 1332 | `			/* Display version */` |
 |    ! 0 | 1333 | `			Version();` |
-|   1029 | 1334 | `		}else if( c == 'd' ){` |
+|   1229 | 1334 | `		}else if( c == 'd' ){` |
 |      - | 1335 | `			/* php CLI parity: -d name=value defines a php.ini entry` |
 |      - | 1336 | `			 * (repeatable; applied to the VM after compile, in order). */` |
-|    509 | 1337 | `			if( n + 1 >= argc ){` |
+|    709 | 1337 | `			if( n + 1 >= argc ){` |
 |    ! 0 | 1338 | `				FatalCode("Missing name=value argument for -d",1);` |
 |    ! 0 | 1339 | `			}` |
-|    509 | 1340 | `			if( nIniDefine < (int)(sizeof(azIniDefine)/sizeof(azIniDefine[0])) ){` |
-|    509 | 1341 | `				azIniDefine[nIniDefine++] = argv[++n];` |
-|    256 | 1342 | `			}else{` |
+|    709 | 1340 | `			if( nIniDefine < (int)(sizeof(azIniDefine)/sizeof(azIniDefine[0])) ){` |
+|    709 | 1341 | `				azIniDefine[nIniDefine++] = argv[++n];` |
+|    356 | 1342 | `			}else{` |
 |    ! 0 | 1343 | `				FatalCode("Too many -d directives",1);` |
 |      4 | 1344 | `			}` |
-|    772 | 1345 | `		}else if( c == 'c' ){` |
+|    872 | 1345 | `		}else if( c == 'c' ){` |
 |      - | 1346 | `			/* php CLI parity: -c file loads php.ini directives from a file` |
 |      - | 1347 | `			 * (name=value lines; [sections] and ;/# comments ignored). */` |
 |    520 | 1348 | `			if( n + 1 >= argc ){` |
@@ -1363,9 +1363,9 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1353 | `			/* Display a help message and exit */` |
 |    ! 0 | 1354 | `			Help();` |
 |      - | 1355 | `		}` |
-|   1012 | 1356 | `	}` |
+|   1112 | 1356 | `	}` |
 |      - | 1357 | `#ifdef PHL_ENABLE_SERVER` |
-|   7857 | 1358 | `	if( server_mode ){` |
+|   8490 | 1358 | `	if( server_mode ){` |
 |      - | 1359 | `		/* Parse host:port from zServerAddr */` |
 |      - | 1360 | `		char zHost[256];` |
 |     32 | 1361 | `		int iPort = 0;` |
@@ -1392,7 +1392,7 @@ Coverage: 719/885 lines (81.24%)
 |     32 | 1382 | `		return phl_serve(zHost, iPort, zDocRoot, zRouter, PHL_ResolveBinaryPath(argv[0]));` |
 |      - | 1383 | `	}` |
 |      - | 1384 | `#endif` |
-|   7825 | 1385 | `	if( (n >= argc \|\| dash_dash) && !run_code ){` |
+|   8458 | 1385 | `	if( (n >= argc \|\| dash_dash) && !run_code ){` |
 |      - | 1386 | ``		/* No file and no -r: php reads the script from stdin. `--` forces this`` |
 |      - | 1387 | `		 * (rest are script args); otherwise only when stdin is a pipe/redirect` |
 |      - | 1388 | `		 * (an interactive terminal would just block). */` |
@@ -1413,9 +1413,9 @@ Coverage: 719/885 lines (81.24%)
 |      5 | 1403 | `	CreateMiniDumpOnUnHandledException();` |
 |      - | 1404 | `#endif` |
 |      - | 1405 | `	/* Allocate a new PH7 engine instance */` |
-|   7401 | 1406 | `	rc = ph7_init(&pEngine);` |
-|   7401 | 1407 | `	pFatalEngine = pEngine;` |
-|   7401 | 1408 | `	if( rc != PH7_OK ){` |
+|   7808 | 1406 | `	rc = ph7_init(&pEngine);` |
+|   7808 | 1407 | `	pFatalEngine = pEngine;` |
+|   7808 | 1408 | `	if( rc != PH7_OK ){` |
 |      - | 1409 | `		/*` |
 |      - | 1410 | `		 * If the supplied memory subsystem is so sick that we are unable` |
 |      - | 1411 | `		 * to allocate a tiny chunk of memory,there is no much we can do here.` |
@@ -1429,7 +1429,7 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1419 | `	 * streams are wired below, the engine routes each copy to the right one, and` |
 |      - | 1420 | `	 * this only serves the window in which the main script's own compile creates` |
 |      - | 1421 | `	 * the VM. */` |
-|   7401 | 1422 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
+|   7808 | 1422 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
 |      - | 1423 | `		Error_Consumer, /* Compile-time diagnostic consumer (STDERR) */` |
 |      - | 1424 | `		0 /* NULL: Callback Private data */` |
 |      - | 1425 | `		);` |
@@ -1437,7 +1437,7 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1427 | `	 * takes, which php puts on STDOUT. Also a fallback: the VM's own output` |
 |      - | 1428 | `	 * consumer is installed below, and does not exist while the main script is` |
 |      - | 1429 | `	 * being compiled. */` |
-|   7401 | 1430 | `	ph7_config(pEngine,PH7_CONFIG_OUTPUT,` |
+|   7808 | 1430 | `	ph7_config(pEngine,PH7_CONFIG_OUTPUT,` |
 |      - | 1431 | `		Output_Consumer, /* Compile-time DISPLAY copy consumer (STDOUT) */` |
 |      - | 1432 | `		0 /* NULL: Callback Private data */` |
 |      - | 1433 | `		);` |
@@ -1450,11 +1450,11 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1440 | `	 * comes first and -d overrides it in CLI order (php's precedence), and the` |
 |      - | 1441 | `` 	 * whole queue lands after the error-report default so `-d error_reporting=0` `` |
 |      - | 1442 | `	 * can still lower it. */` |
-|   7401 | 1443 | `	ph7_config(pEngine,PH7_CONFIG_ERR_REPORT);` |
-|   7401 | 1444 | `	if( zIniFile ){` |
+|   7808 | 1443 | `	ph7_config(pEngine,PH7_CONFIG_ERR_REPORT);` |
+|   7808 | 1444 | `	if( zIniFile ){` |
 |    520 | 1445 | `		PHL_LoadIniFile(pEngine,zIniFile);` |
 |    260 | 1446 | `	}` |
-|   7401 | 1447 | `	if( nIniDefine > 0 ){` |
+|   7808 | 1447 | `	if( nIniDefine > 0 ){` |
 |      - | 1448 | `		/* php's CLI SAPI joins every -d into ONE buffer for zend_parse_ini_string(),` |
 |      - | 1449 | `		 * prefixed by five lines of its own hardcoded startup ini (php_cli.c's` |
 |      - | 1450 | `		 * HARDCODED_INI: html_errors, implicit_flush, output_buffering,` |
@@ -1467,21 +1467,21 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1457 | `` 		 * next one's text exactly as it would inside a file. `-d "x='a" -d "y=b'"` `` |
 |      - | 1458 | ``		 * is a single raw string spanning both, and an unterminated `"` in the`` |
 |      - | 1459 | `		 * first swallows every -d behind it. */` |
-|    295 | 1460 | `		size_t nCap = 0, nUsed = 0;` |
+|    365 | 1460 | `		size_t nCap = 0, nUsed = 0;` |
 |      - | 1461 | `		char *zBuf;` |
 |      - | 1462 | `		int i;` |
-|    800 | 1463 | `		for( i = 0 ; i < nIniDefine ; i++ ){` |
-|    509 | 1464 | `			nCap += strlen(azIniDefine[i]) + sizeof("\"\"=1\n");` |
-|    256 | 1465 | `		}` |
-|    295 | 1466 | `		zBuf = (char *)malloc(nCap);` |
-|    295 | 1467 | `		if( zBuf ){` |
-|    800 | 1468 | `			for( i = 0 ; i < nIniDefine ; i++ ){` |
-|    509 | 1469 | `				nUsed += PHL_IniDefineLine(azIniDefine[i],&zBuf[nUsed]);` |
-|    256 | 1470 | `			}` |
-|    295 | 1471 | `			PHL_ScanIniSource(pEngine,zBuf,nUsed,"Unknown",6);` |
-|    295 | 1472 | `			free(zBuf);` |
-|    145 | 1473 | `		}` |
-|    145 | 1474 | `	}` |
+|   1070 | 1463 | `		for( i = 0 ; i < nIniDefine ; i++ ){` |
+|    709 | 1464 | `			nCap += strlen(azIniDefine[i]) + sizeof("\"\"=1\n");` |
+|    356 | 1465 | `		}` |
+|    365 | 1466 | `		zBuf = (char *)malloc(nCap);` |
+|    365 | 1467 | `		if( zBuf ){` |
+|   1070 | 1468 | `			for( i = 0 ; i < nIniDefine ; i++ ){` |
+|    709 | 1469 | `				nUsed += PHL_IniDefineLine(azIniDefine[i],&zBuf[nUsed]);` |
+|    356 | 1470 | `			}` |
+|    365 | 1471 | `			PHL_ScanIniSource(pEngine,zBuf,nUsed,"Unknown",6);` |
+|    365 | 1472 | `			free(zBuf);` |
+|    180 | 1473 | `		}` |
+|    180 | 1474 | `	}` |
 |      - | 1475 | `	/* Optional per-allocation memory cap (PHL_MAX_ALLOC=bytes). Used to` |
 |      - | 1476 | `	 * deterministically exercise out-of-memory paths (see tests/ph7/003-stress).` |
 |      - | 1477 | `	 * Clamp to a floor above the pool bucket size (SXMEM_POOL_MAXALLOC, 32 KB)` |
@@ -1489,7 +1489,7 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1479 | `	{` |
 |      - | 1480 | `		unsigned long uMax;` |
 |      - | 1481 | `		/* floor: keep above the pool bucket size; clamp: nMaxRequest is 32-bit */` |
-|   7401 | 1482 | `		if( PHL_EnvULong("PHL_MAX_ALLOC",65536UL,0xFFFFFFFFUL,&uMax) ){` |
+|   7808 | 1482 | `		if( PHL_EnvULong("PHL_MAX_ALLOC",65536UL,0xFFFFFFFFUL,&uMax) ){` |
 |    ! 0 | 1483 | `			ph7_config(pEngine,PH7_CONFIG_MAX_ALLOC,(unsigned int)uMax);` |
 |    ! 0 | 1484 | `		}` |
 |      - | 1485 | `	}` |
@@ -1497,7 +1497,7 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1487 | `	 * input-size rejection path at a manageable scale (see tests/ph7/003-stress). */` |
 |      - | 1488 | `	{` |
 |      - | 1489 | `		unsigned long uMax;` |
-|   7401 | 1490 | `		if( PHL_EnvULong("PHL_MAX_INPUT",1UL,0xFFFFFFFFUL,&uMax) ){` |
+|   7808 | 1490 | `		if( PHL_EnvULong("PHL_MAX_INPUT",1UL,0xFFFFFFFFUL,&uMax) ){` |
 |    ! 0 | 1491 | `			ph7_config(pEngine,PH7_CONFIG_MAX_INPUT,(unsigned int)uMax);` |
 |    ! 0 | 1492 | `		}` |
 |      - | 1493 | `	}` |
@@ -1505,46 +1505,46 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1495 | `	 * line and exit without executing. The error consumer installed above` |
 |      - | 1496 | `	 * already prints any parse error; ph7_compile_file leaves *pVm NULL on a` |
 |      - | 1497 | `	 * compile/IO error, so only a successful compile owns a VM to release. */` |
-|   7401 | 1498 | `	if( lint_mode ){` |
+|   7808 | 1498 | `	if( lint_mode ){` |
 |      - | 1499 | `		const char *zFile;` |
-|    358 | 1500 | `		if( n >= argc ){` |
+|    357 | 1500 | `		if( n >= argc ){` |
 |      - | 1501 | ``			/* No file argument (e.g. `-l` alone, or `-l` mixed with `-r`). */`` |
 |    ! 0 | 1502 | `			ph7_release(pEngine);` |
 |    ! 0 | 1503 | `			pFatalEngine = 0;` |
 |    ! 0 | 1504 | `			puts("No input file specified");` |
 |    ! 0 | 1505 | `			return 255;` |
 |      - | 1506 | `		}` |
-|    358 | 1507 | `		zFile = argv[n];` |
-|    358 | 1508 | `		rc = ph7_compile_file(pEngine,zFile,&pVm,PH7_SYNTAX_CHECK);` |
-|    358 | 1509 | `		if( rc == PH7_OK ){` |
-|    130 | 1510 | `			printf("No syntax errors detected in %s\n",zFile);` |
-|    130 | 1511 | `			ph7_vm_release(pVm);` |
-|    294 | 1512 | `		}else if( rc == PH7_IO_ERR ){` |
+|    357 | 1507 | `		zFile = argv[n];` |
+|    357 | 1508 | `		rc = ph7_compile_file(pEngine,zFile,&pVm,PH7_SYNTAX_CHECK);` |
+|    357 | 1509 | `		if( rc == PH7_OK ){` |
+|    129 | 1510 | `			printf("No syntax errors detected in %s\n",zFile);` |
+|    129 | 1511 | `			ph7_vm_release(pVm);` |
+|    293 | 1512 | `		}else if( rc == PH7_IO_ERR ){` |
 |      - | 1513 | `			/* php says this on STDERR, like the run path above */` |
 |      4 | 1514 | `			fprintf(stderr,"Could not open input file: %s\n",zFile);` |
 |      2 | 1515 | `		}else{` |
-|    227 | 1516 | `			printf("Errors parsing %s\n",zFile);` |
+|    226 | 1516 | `			printf("Errors parsing %s\n",zFile);` |
 |      - | 1517 | `		}` |
-|    358 | 1518 | `		ph7_release(pEngine);` |
-|    358 | 1519 | `		pFatalEngine = 0;` |
+|    357 | 1518 | `		ph7_release(pEngine);` |
+|    357 | 1519 | `		pFatalEngine = 0;` |
 |      - | 1520 | `		/* php's two exit codes are not one: a file it cannot OPEN is 1 (a bad` |
 |      - | 1521 | `		 * invocation), a file that does not PARSE is 255. */` |
-|    358 | 1522 | `		if( rc == PH7_OK ){` |
-|    130 | 1523 | `			return 0;` |
+|    357 | 1522 | `		if( rc == PH7_OK ){` |
+|    129 | 1523 | `			return 0;` |
 |      - | 1524 | `		}` |
-|    231 | 1525 | `		return (rc == PH7_IO_ERR) ? 1 : 255;` |
+|    230 | 1525 | `		return (rc == PH7_IO_ERR) ? 1 : 255;` |
 |      - | 1526 | `	}` |
 |      - | 1527 | `	/* Now,it's time to compile our PHP file */` |
-|   7047 | 1528 | `	if( run_code ){` |
+|   7454 | 1528 | `	if( run_code ){` |
 |      - | 1529 | `		/* Compile inline PHP code string (PHP only - no tags needed) */` |
-|    585 | 1530 | `		rc = ph7_compile_v2(` |
+|    586 | 1530 | `		rc = ph7_compile_v2(` |
 |    291 | 1531 | `			pEngine, /* PH7 Engine */` |
 |    291 | 1532 | `			zRunCode, /* Source code */` |
 |      - | 1533 | `			-1,       /* Let API compute length */` |
 |      - | 1534 | `			&pVm,     /* OUT: Compiled PHP program */` |
 |      - | 1535 | `			PH7_PHP_ONLY /* Inline PHP, no tags expected */` |
 |      - | 1536 | `			);` |
-|    585 | 1537 | `		if( rc != PH7_OK ){ /* Compile error */` |
+|    586 | 1537 | `		if( rc != PH7_OK ){ /* Compile error */` |
 |      7 | 1538 | `			if( rc == PH7_VM_ERR ){` |
 |    ! 0 | 1539 | `				Fatal("VM initialization error");` |
 |    ! 0 | 1540 | `			}else{` |
@@ -1553,7 +1553,7 @@ Coverage: 719/885 lines (81.24%)
 |      7 | 1543 | `				FatalSilent();` |
 |      - | 1544 | `			}` |
 |      6 | 1545 | `		}` |
-|   6756 | 1546 | `	}else if( stdin_code ){` |
+|   7163 | 1546 | `	}else if( stdin_code ){` |
 |      - | 1547 | `		/* Script read from stdin: compile it like a file (PHP tags expected). */` |
 |     12 | 1548 | `		rc = ph7_compile_v2(` |
 |      6 | 1549 | `			pEngine,     /* PH7 Engine */` |
@@ -1570,51 +1570,51 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1560 | `			}` |
 |    ! 0 | 1561 | `		}` |
 |      6 | 1562 | `	}else{` |
-|   6453 | 1563 | `		rc = ph7_compile_file(` |
-|   2965 | 1564 | `			pEngine, /* PH7 Engine */` |
-|   6448 | 1565 | `			argv[n], /* Path to the PHP file to compile */` |
+|   6860 | 1563 | `		rc = ph7_compile_file(` |
+|   3112 | 1564 | `			pEngine, /* PH7 Engine */` |
+|   6855 | 1565 | `			argv[n], /* Path to the PHP file to compile */` |
 |      - | 1566 | `			&pVm,    /* OUT: Compiled PHP program */` |
 |      - | 1567 | `			0        /* IN: Compile flags */` |
 |      - | 1568 | `			);` |
-|   6453 | 1569 | `		if( rc != PH7_OK ){ /* Compile error */` |
-|   1018 | 1570 | `			if( rc == PH7_IO_ERR ){` |
+|   6860 | 1569 | `		if( rc != PH7_OK ){ /* Compile error */` |
+|   1244 | 1570 | `			if( rc == PH7_IO_ERR ){` |
 |      - | 1571 | `				/* php names the file it could not open, and says so on STDERR --` |
 |      - | 1572 | `				 * this answered a generic "IO error while opening the target file"` |
 |      - | 1573 | `				 * on stdout, which a script capturing program output then read as` |
 |      - | 1574 | `				 * part of the answer. */` |
 |      4 | 1575 | `				fprintf(stderr,"Could not open input file: %s\n",argv[n]);` |
 |      4 | 1576 | `				FatalSilentCode(1);` |
-|   1016 | 1577 | `			}else if( rc == PH7_VM_ERR ){` |
+|   1242 | 1577 | `			}else if( rc == PH7_VM_ERR ){` |
 |    ! 0 | 1578 | `				Fatal("VM initialization error");` |
 |    ! 0 | 1579 | `			}else{` |
 |      - | 1580 | `				/* Compile-time error. The diagnostic has already been printed by the` |
 |      - | 1581 | `				 * error consumer; php prints nothing further and exits 255. */` |
-|   1014 | 1582 | `				FatalSilent();` |
+|   1240 | 1582 | `				FatalSilent();` |
 |      - | 1583 | `			}` |
-|    507 | 1584 | `		}` |
+|    620 | 1584 | `		}` |
 |      - | 1585 | `	}` |
 |      - | 1586 | `	/*` |
 |      - | 1587 | `	 * Now we have our script compiled,it's time to configure our VM.` |
 |      - | 1588 | `	 * We will install the VM output consumer callback defined above` |
 |      - | 1589 | `	 * so that we can consume the VM output and redirect it to STDOUT.` |
 |      - | 1590 | `	 */` |
-|   6537 | 1591 | `	rc = ph7_vm_config(pVm,` |
+|   6831 | 1591 | `	rc = ph7_vm_config(pVm,` |
 |      - | 1592 | `		PH7_VM_CONFIG_OUTPUT,` |
 |      - | 1593 | `		Output_Consumer,    /* Output Consumer callback */` |
 |      - | 1594 | `		0                   /* Callback private data */` |
 |      - | 1595 | `		);` |
-|   6537 | 1596 | `	if( rc != PH7_OK ){` |
+|   6831 | 1596 | `	if( rc != PH7_OK ){` |
 |    ! 0 | 1597 | `		Fatal("Error while installing the VM output consumer callback");` |
 |    ! 0 | 1598 | `	}` |
 |      - | 1599 | `	/* Diagnostics stream: route the log copy of runtime warnings/notices and the` |
 |      - | 1600 | `	 * uncaught-exception fatal to STDERR (gated by log_errors), so program STDOUT` |
 |      - | 1601 | `	 * stays clean like stock CLI php. */` |
-|   6537 | 1602 | `	rc = ph7_vm_config(pVm,` |
+|   6831 | 1602 | `	rc = ph7_vm_config(pVm,` |
 |      - | 1603 | `		PH7_VM_CONFIG_ERR_STREAM,` |
 |      - | 1604 | `		Error_Consumer,     /* Diagnostics (STDERR) consumer callback */` |
 |      - | 1605 | `		0                   /* Callback private data */` |
 |      - | 1606 | `		);` |
-|   6537 | 1607 | `	if( rc != PH7_OK ){` |
+|   6831 | 1607 | `	if( rc != PH7_OK ){` |
 |    ! 0 | 1608 | `		Fatal("Error while installing the VM diagnostics consumer callback");` |
 |    ! 0 | 1609 | `	}` |
 |      - | 1610 | `	/* Optional recursion caps via the environment (like PHL_MAX_ALLOC). The host` |
@@ -1627,66 +1627,66 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1617 | `	 *                          floor 2) */` |
 |      - | 1618 | `	{` |
 |      - | 1619 | `		unsigned long uMax;` |
-|   6537 | 1620 | `		if( PHL_EnvULong("PHL_MAX_RECURSION",1UL,0x7FFFFFFFUL,&uMax) ){` |
+|   6831 | 1620 | `		if( PHL_EnvULong("PHL_MAX_RECURSION",1UL,0x7FFFFFFFUL,&uMax) ){` |
 |      5 | 1621 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_RECURSION_DEPTH,(int)uMax);` |
 |      2 | 1622 | `		}` |
-|   6537 | 1623 | `		if( PHL_EnvULong("PHL_MAX_NATIVE_DEPTH",2UL,0x7FFFFFFFUL,&uMax) ){` |
-|     12 | 1624 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_NATIVE_DEPTH,(int)uMax);` |
+|   6831 | 1623 | `		if( PHL_EnvULong("PHL_MAX_NATIVE_DEPTH",2UL,0x7FFFFFFFUL,&uMax) ){` |
+|     11 | 1624 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_NATIVE_DEPTH,(int)uMax);` |
 |      5 | 1625 | `		}` |
 |      - | 1626 | `	}` |
 |      - | 1627 | `	/* Define PHP_BINARY: absolute path of this interpreter */` |
-|   9799 | 1628 | `	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,` |
-|   6532 | 1629 | `		(void *)PHL_ResolveBinaryPath(argv[0]));` |
+|  10240 | 1628 | `	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,` |
+|   6826 | 1629 | `		(void *)PHL_ResolveBinaryPath(argv[0]));` |
 |      - | 1630 | `	/* Register the script arguments as $argv[] plus the matching $argc count and` |
 |      - | 1631 | `	 * the CLI $_SERVER entries, matching PHP: $argv[0] is the script path (file` |
 |      - | 1632 | `	 * mode) or the literal "Standard input code" (-r mode), followed by the` |
 |      - | 1633 | `	 * script's own arguments.` |
 |      - | 1634 | `	 */` |
 |      - | 1635 | `	{` |
-|   6537 | 1636 | `		const char *zScriptName = (run_code \|\| stdin_code) ? "Standard input code" : argv[n];` |
-|   6537 | 1637 | `		int argv_count = 0;` |
+|   6831 | 1636 | `		const char *zScriptName = (run_code \|\| stdin_code) ? "Standard input code" : argv[n];` |
+|   6831 | 1637 | `		int argv_count = 0;` |
 |      - | 1638 | `		ph7_value *pArgc;` |
 |      - | 1639 | `		/* Count only the entries actually inserted, so $argc can never disagree` |
 |      - | 1640 | `		 * with count($argv) if a registration fails. */` |
-|   6537 | 1641 | `		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){` |
-|   6534 | 1642 | `			argv_count++;` |
-|   3259 | 1643 | `		}` |
+|   6831 | 1641 | `		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){` |
+|   6828 | 1642 | `			argv_count++;` |
+|   3406 | 1643 | `		}` |
 |      - | 1644 | `		/* The script's own arguments follow: in file mode argv[n] is the script` |
 |      - | 1645 | `		 * (registered above), so they start at n+1; in -r mode they start at n. */` |
-|   6613 | 1646 | `		for( n = (run_code \|\| stdin_code) ? n : n + 1; n < argc ; ++n ){` |
+|   6907 | 1646 | `		for( n = (run_code \|\| stdin_code) ? n : n + 1; n < argc ; ++n ){` |
 |     81 | 1647 | `			if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]) == PH7_OK ){` |
 |     81 | 1648 | `				argv_count++;` |
 |     38 | 1649 | `			}` |
 |     43 | 1650 | `		}` |
 |      - | 1651 | `		/* $argc: a plain integer global equal to count($argv). */` |
-|   6537 | 1652 | `		pArgc = ph7_new_scalar(pVm);` |
-|   6537 | 1653 | `		if( pArgc ){` |
-|   6534 | 1654 | `			ph7_value_int(pArgc,argv_count);` |
-|   6534 | 1655 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
-|   6534 | 1656 | `			ph7_release_value(pVm,pArgc);` |
-|   3259 | 1657 | `		}` |
+|   6831 | 1652 | `		pArgc = ph7_new_scalar(pVm);` |
+|   6831 | 1653 | `		if( pArgc ){` |
+|   6828 | 1654 | `			ph7_value_int(pArgc,argv_count);` |
+|   6828 | 1655 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
+|   6828 | 1656 | `			ph7_release_value(pVm,pArgc);` |
+|   3406 | 1657 | `		}` |
 |      - | 1658 | `		/* Mirror $argv/$argc into $_SERVER['argv']/$_SERVER['argc'] (php CLI). */` |
-|   6537 | 1659 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ARGV);` |
+|   6831 | 1659 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ARGV);` |
 |      - | 1660 | `		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is` |
 |      - | 1661 | `		 * already set to the script path by PH7_HashmapCreateSuper. */` |
-|   6537 | 1662 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
-|   6537 | 1663 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
-|   6537 | 1664 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
+|   6831 | 1662 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
+|   6831 | 1663 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
+|   6831 | 1664 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
 |      - | 1665 | `		{` |
 |      - | 1666 | `			char zTime[32];` |
-|   6537 | 1667 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
-|   6537 | 1668 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
+|   6831 | 1667 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
+|   6831 | 1668 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
 |      - | 1669 | `		}` |
 |      - | 1670 | `#ifndef __WINNT__` |
 |      - | 1671 | `		{` |
 |      - | 1672 | `			char zCwd[PATH_MAX];` |
-|   6532 | 1673 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
-|   6529 | 1674 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
-|   3259 | 1675 | `			}` |
+|   6826 | 1673 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
+|   6823 | 1674 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
+|   3406 | 1675 | `			}` |
 |      - | 1676 | `		}` |
 |      - | 1677 | `#endif` |
 |      - | 1678 | `	}` |
-|   6537 | 1679 | `	if( dump_vm ){` |
+|   6831 | 1679 | `	if( dump_vm ){` |
 |      - | 1680 | `		/* Dump PH7 byte-code instructions */` |
 |      3 | 1681 | `		ph7_vm_dump_v2(pVm,` |
 |      - | 1682 | `			Output_Consumer, /* Dump consumer callback */` |
@@ -1698,20 +1698,20 @@ Coverage: 719/885 lines (81.24%)
 |      - | 1688 | `	 * should display the result.` |
 |      - | 1689 | `	 */` |
 |      - | 1690 | `	{` |
-|   6537 | 1691 | `		int iExitStatus = 0;` |
-|   6537 | 1692 | `		ph7_vm_exec(pVm,&iExitStatus);` |
+|   6831 | 1691 | `		int iExitStatus = 0;` |
+|   6831 | 1692 | `		ph7_vm_exec(pVm,&iExitStatus);` |
 |      - | 1693 | `		/* All done, cleanup the mess left behind.` |
 |      - | 1694 | `		*/` |
-|   6545 | 1695 | `		ph7_vm_release(pVm);` |
-|   6545 | 1696 | `		ph7_release(pEngine);` |
-|   6545 | 1697 | `		pFatalEngine = 0;` |
+|   6839 | 1695 | `		ph7_vm_release(pVm);` |
+|   6839 | 1696 | `		ph7_release(pEngine);` |
+|   6839 | 1697 | `		pFatalEngine = 0;` |
 |      - | 1698 | `		/* The stdin slurp outlives compilation (the compiler keeps pointers` |
 |      - | 1699 | `		 * into the source text), so it is freed only here, after the VM. */` |
-|   6545 | 1700 | `		if( zStdinCode ){` |
+|   6839 | 1700 | `		if( zStdinCode ){` |
 |     12 | 1701 | `			free(zStdinCode);` |
 |      6 | 1702 | `		}` |
 |      - | 1703 | `		/* Propagate the script exit status (set via exit()/die()) */` |
-|   6545 | 1704 | `		return iExitStatus;` |
+|   6839 | 1704 | `		return iExitStatus;` |
 |      - | 1705 | `	}` |
-|   3460 | 1706 | `}` |
+|   3607 | 1706 | `}` |
 |      - | 1707 |  |

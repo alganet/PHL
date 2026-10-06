@@ -83,17 +83,17 @@ Coverage: 718/802 lines (89.53%)
 |      - |   73 | ` * PH7_LibxmlVmRelease before the allocator that holds the shells is torn` |
 |      - |   74 | ` * down.` |
 |      - |   75 | ` */` |
-|   6717 |   76 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
+|   7011 |   76 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
 |      5 |   77 | `{` |
-|   6722 |   78 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
-|   6854 |   79 | `	while( pXw ){` |
+|   7016 |   78 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
+|   7148 |   79 | `	while( pXw ){` |
 |    133 |   80 | `		phl_xmlwriter *pNext = pXw->pNext;` |
 |    133 |   81 | `		XmlWriterFree(pXw);` |
 |    133 |   82 | `		SyMemBackendFree(&pVm->sAllocator,pXw);` |
 |    133 |   83 | `		pXw = pNext;` |
 |      1 |   84 | `	}` |
-|   6722 |   85 | `	pVm->pXmlWriters = 0;` |
-|   6722 |   86 | `}` |
+|   7016 |   85 | `	pVm->pXmlWriters = 0;` |
+|   7016 |   86 | `}` |
 |      - |   87 |  |
 |      - |   88 | `/*` |
 |      - |   89 | ` * A writer's bytes on their way to a stream. libxml calls this from its own` |
@@ -1331,7 +1331,7 @@ Coverage: 718/802 lines (89.53%)
 |      - | 1321 | ` * Install the XMLWriter library.  Called from PH7_VmInit inside the` |
 |      - | 1322 | ` * bCompilingBuiltin window, after PH7_VmInstallLibxml.` |
 |      - | 1323 | ` */` |
-|   7925 | 1324 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
+|   8445 | 1324 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
 |      5 | 1325 | `{` |
 |      - | 1326 | `	/* php's own signatures. Declaring them is what gives these methods argument` |
 |      - | 1327 | `	 * coercion and a too-few/too-many ArgumentCountError; the prelude hand-cast` |
@@ -1473,10 +1473,10 @@ Coverage: 718/802 lines (89.53%)
 |      - | 1463 | `		aProp, SX_ARRAYSIZE(aProp),` |
 |      - | 1464 | `		XmlWriterInstanceRelease, 0, 0` |
 |      - | 1465 | `	};` |
-| 340780 | 1466 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
-| 332855 | 1467 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 166199 | 1468 | `	}` |
-|   7930 | 1469 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+| 363140 | 1466 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
+| 354695 | 1467 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 177119 | 1468 | `	}` |
+|   8450 | 1469 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |      5 | 1470 | `}` |
 |      - | 1471 |  |
 |      - | 1472 | `#else` |

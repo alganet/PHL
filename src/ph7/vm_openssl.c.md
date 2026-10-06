@@ -292,17 +292,17 @@ Coverage: 1786/2219 lines (80.49%)
 |      - |  282 | `/* Free every registered handle. Called from the VM reset (a reused VM must not` |
 |      - |  283 | ` * inherit the previous program's keys) and from the release before the` |
 |      - |  284 | ` * allocator holding the records goes away. */` |
-|   6717 |  285 | `static void SslFreeAllObjects(ph7_vm *pVm)` |
+|   7011 |  285 | `static void SslFreeAllObjects(ph7_vm *pVm)` |
 |      5 |  286 | `{` |
-|   6722 |  287 | `	phl_ssl_obj *pObj = (phl_ssl_obj *)pVm->pSslObjs;` |
-|   6824 |  288 | `	while( pObj ){` |
+|   7016 |  287 | `	phl_ssl_obj *pObj = (phl_ssl_obj *)pVm->pSslObjs;` |
+|   7118 |  288 | `	while( pObj ){` |
 |    104 |  289 | `		phl_ssl_obj *pNext = pObj->pNext;` |
 |    104 |  290 | `		PH7_SslFreeObject(pObj);` |
 |    104 |  291 | `		SyMemBackendFree(&pVm->sAllocator,pObj);` |
 |    104 |  292 | `		pObj = pNext;` |
 |      2 |  293 | `	}` |
-|   6722 |  294 | `	pVm->pSslObjs = 0;` |
-|   6722 |  295 | `}` |
+|   7016 |  294 | `	pVm->pSslObjs = 0;` |
+|   7016 |  295 | `}` |
 |     16 |  296 | `PH7_PRIVATE void PH7_SslVmReset(ph7_vm *pVm)` |
 |    ! 0 |  297 | `{` |
 |     16 |  298 | `	SslFreeAllObjects(pVm);` |
@@ -311,12 +311,12 @@ Coverage: 1786/2219 lines (80.49%)
 |    ! 0 |  301 | `	}` |
 |     16 |  302 | `	ERR_clear_error();` |
 |     16 |  303 | `}` |
-|   6701 |  304 | `PH7_PRIVATE void PH7_SslVmRelease(ph7_vm *pVm)` |
+|   6995 |  304 | `PH7_PRIVATE void PH7_SslVmRelease(ph7_vm *pVm)` |
 |      5 |  305 | `{` |
-|   6706 |  306 | `	SslFreeAllObjects(pVm);` |
-|   6706 |  307 | `	pVm->pSslErrors = 0;   /* the allocator releases the ring with everything else */` |
-|   6706 |  308 | `	ERR_clear_error();` |
-|   6706 |  309 | `}` |
+|   7000 |  306 | `	SslFreeAllObjects(pVm);` |
+|   7000 |  307 | `	pVm->pSslErrors = 0;   /* the allocator releases the ring with everything else */` |
+|   7000 |  308 | `	ERR_clear_error();` |
+|   7000 |  309 | `}` |
 |      - |  310 |  |
 |      - |  311 | `/* ------------------------------------------------------------------------` |
 |      - |  312 | ` * Algorithm lookup` |
@@ -3111,7 +3111,7 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 3101 | `` * them. `(int)` on one is the object handle, silently, which is`` |
 |      - | 3102 | ` * PH7_CLASS_HANDLE_ID.` |
 |      - | 3103 | ` */` |
-|   7925 | 3104 | `PH7_PRIVATE sxi32 PH7_VmInstallOpenSsl(ph7_vm *pVm)` |
+|   8445 | 3104 | `PH7_PRIVATE sxi32 PH7_VmInstallOpenSsl(ph7_vm *pVm)` |
 |      5 | 3105 | `{` |
 |      - | 3106 | `	static const PH7_NativePropDef aProp[] = {` |
 |      - | 3107 | `		{ "__res", PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }` |
@@ -3140,25 +3140,25 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 3130 | `	};` |
 |      - | 3131 | `	sxi32 rc;` |
 |      - | 3132 | `	sxu32 n;` |
-|   7930 | 3133 | `	pVm->pSslObjs = 0;` |
-|   7930 | 3134 | `	pVm->pSslErrors = 0;` |
-|   7930 | 3135 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|   7930 | 3136 | `	if( rc != SXRET_OK ){` |
+|   8450 | 3133 | `	pVm->pSslObjs = 0;` |
+|   8450 | 3134 | `	pVm->pSslErrors = 0;` |
+|   8450 | 3135 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|   8450 | 3136 | `	if( rc != SXRET_OK ){` |
 |    ! 0 | 3137 | `		return rc;` |
 |      - | 3138 | `	}` |
-|  31705 | 3139 | `	for( n = 0 ; n < SX_ARRAYSIZE(aRefusal) ; ++n ){` |
-|  35651 | 3140 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),aRefusal[n].zName,` |
-|  23775 | 3141 | `			(sxu32)SyStrlen(aRefusal[n].zName),FALSE,0);` |
-|  23780 | 3142 | `		if( pClass ){` |
-|  23780 | 3143 | `			pClass->zNewRefusal = aRefusal[n].zRefusal;` |
-|  23780 | 3144 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-|  11871 | 3145 | `		}` |
-|  11876 | 3146 | `	}` |
-|   7930 | 3147 | `	return PH7_VmInstallOpenSslX509(&(*pVm));` |
-|   3962 | 3148 | `}` |
+|  33785 | 3139 | `	for( n = 0 ; n < SX_ARRAYSIZE(aRefusal) ; ++n ){` |
+|  37991 | 3140 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),aRefusal[n].zName,` |
+|  25335 | 3141 | `			(sxu32)SyStrlen(aRefusal[n].zName),FALSE,0);` |
+|  25340 | 3142 | `		if( pClass ){` |
+|  25340 | 3143 | `			pClass->zNewRefusal = aRefusal[n].zRefusal;` |
+|  25340 | 3144 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+|  12651 | 3145 | `		}` |
+|  12656 | 3146 | `	}` |
+|   8450 | 3147 | `	return PH7_VmInstallOpenSslX509(&(*pVm));` |
+|   4222 | 3148 | `}` |
 |      - | 3149 | `/* The functions this unit owns, in php's own registration order. The` |
 |      - | 3150 | ` * certificate half registers its own (vm_openssl_x509.c). */` |
-|   7925 | 3151 | `PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslFuncTable(sxu32 *pnEntry)` |
+|   8445 | 3151 | `PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslFuncTable(sxu32 *pnEntry)` |
 |      5 | 3152 | `{` |
 |      - | 3153 | `	static const ph7_builtin_func aFunc[] = {` |
 |      - | 3154 | `		{ "openssl_pbkdf2",               vm_builtin_openssl_pbkdf2               },` |
@@ -3196,8 +3196,8 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 3186 | `		{ "openssl_spki_export",          vm_builtin_openssl_spki_export          },` |
 |      - | 3187 | `		{ "openssl_spki_export_challenge",vm_builtin_openssl_spki_export_challenge}` |
 |      - | 3188 | `	};` |
-|   7930 | 3189 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
-|   7930 | 3190 | `	return aFunc;` |
+|   8450 | 3189 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
+|   8450 | 3190 | `	return aFunc;` |
 |      5 | 3191 | `}` |
 |      - | 3192 |  |
 |      - | 3193 | `#else` |

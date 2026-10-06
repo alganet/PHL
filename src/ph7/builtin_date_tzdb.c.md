@@ -847,9 +847,9 @@ Coverage: 544/635 lines (85.67%)
 |  14310 |  837 | `		while( iLo < iHi ){` |
 |  12656 |  838 | `			sxu32 iMid = iLo + (iHi - iLo + 1) / 2;` |
 |  12656 |  839 | `			if( TzI64(sB.aTime + iMid * 8) <= iTs ){` |
-|   7324 |  840 | `				iLo = iMid;` |
-|   3664 |  841 | `			}else{` |
-|   5336 |  842 | `				iHi = iMid - 1;` |
+|   7278 |  840 | `				iLo = iMid;` |
+|   3641 |  841 | `			}else{` |
+|   5382 |  842 | `				iHi = iMid - 1;` |
 |      - |  843 | `			}` |
 |      4 |  844 | `		}` |
 |   1658 |  845 | `		iType = sB.aIdx[iLo];` |

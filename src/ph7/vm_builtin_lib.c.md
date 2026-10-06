@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 460/526 lines (87.45%)
+Coverage: 500/568 lines (88.03%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -312,1309 +312,1361 @@ Coverage: 460/526 lines (87.45%)
 |       - |  302 | `   "}"\` |
 |       - |  303 | `   "function is_iterable(mixed $value): bool { return is_array($value) \|\| ($value instanceof Traversable); }"\` |
 |       - |  304 | `   "function is_countable(mixed $value): bool { return is_array($value) \|\| ($value instanceof Countable); }"\` |
-|       - |  305 | `   "function doubleval(mixed $value): float { return (float)$value; }"\` |
-|       - |  306 | `   "function array_count_values(array $array): array {"\` |
-|       - |  307 | `   "  $out = array();"\` |
-|       - |  308 | `   "  foreach( $array as $v ){"\` |
-|       - |  309 | `   "    if( !is_int($v) && !is_string($v) ){"\` |
-|       - |  310 | `   "      trigger_error('array_count_values(): Can only count string and integer values, entry skipped', E_USER_WARNING);"\` |
-|       - |  311 | `   "      continue;"\` |
-|       - |  312 | `   "    }"\` |
-|       - |  313 | `   "    if( isset($out[$v]) ){ $out[$v] = $out[$v] + 1; } else { $out[$v] = 1; }"\` |
-|       - |  314 | `   "  }"\` |
-|       - |  315 | `   "  return $out;"\` |
-|       - |  316 | `   "}"\` |
-|       - |  317 | `   "function array_change_key_case(array $array, int $case = CASE_LOWER): array {"\` |
-|       - |  318 | `   "  $out = array();"\` |
-|       - |  319 | `   "  foreach( $array as $k => $v ){"\` |
-|       - |  320 | `   "    if( is_string($k) ){ $k = ($case == CASE_UPPER) ? strtoupper($k) : strtolower($k); }"\` |
-|       - |  321 | `   "    $out[$k] = $v;"\` |
-|       - |  322 | `   "  }"\` |
-|       - |  323 | `   "  return $out;"\` |
-|       - |  324 | `   "}"\` |
-|       - |  325 | `   "function array_replace_recursive(array $array, array ...$replacements): array {"\` |
-|       - |  326 | `   "  foreach( $replacements as $o ){"\` |
-|       - |  327 | `   "    foreach( $o as $k => $v ){"\` |
-|       - |  328 | `   "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\` |
-|       - |  329 | `   "        $array[$k] = array_replace_recursive($array[$k], $v);"\` |
-|       - |  330 | `   "      }else{"\` |
-|       - |  331 | `   "        $array[$k] = $v;"\` |
-|       - |  332 | `   "      }"\` |
-|       - |  333 | `   "    }"\` |
-|       - |  334 | `   "  }"\` |
-|       - |  335 | `   "  return $array;"\` |
-|       - |  336 | `   "}"\` |
-|       - |  337 | `   /* class_parents/class_implements/class_uses moved to C (vm_builtin_class.c):` |
-|       - |  338 | `    * as prelude wrappers they gated on class_exists(), so an interface, a trait` |
-|       - |  339 | `    * and an enum all answered FALSE where php answers a list; class_uses could` |
-|       - |  340 | `    * not reach the trait table at all and returned the empty set for every class;` |
-|       - |  341 | `    * and the E_WARNING php raises for a name nothing declares cannot be raised` |
-|       - |  342 | `    * from here at php's severity or against the CALLER's line. */\` |
-|       - |  343 | `   "function ip2long(string $ip): int\|false {"\` |
-|       - |  344 | `   "  $p = explode('.', $ip);"\` |
-|       - |  345 | `   "  if( count($p) !== 4 ){ return false; }"\` |
-|       - |  346 | `   "  $n = 0;"\` |
-|       - |  347 | `   "  foreach( $p as $o ){"\` |
-|       - |  348 | `   "    if( !ctype_digit($o) \|\| (int)$o < 0 \|\| (int)$o > 255 ){ return false; }"\` |
-|       - |  349 | `   "    $n = $n * 256 + (int)$o;"\` |
-|       - |  350 | `   "  }"\` |
-|       - |  351 | `   "  return $n;"\` |
-|       - |  352 | `   "}"\` |
-|       - |  353 | `   "function long2ip(int $ip): string {"\` |
-|       - |  354 | `   "  return (($ip >> 24) & 255) . '.' . (($ip >> 16) & 255) . '.' . (($ip >> 8) & 255) . '.' . ($ip & 255);"\` |
-|       - |  355 | `   "}"\` |
-|       - |  356 | `   "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\` |
-|       - |  357 | `   "function str_increment(string $string): string {"\` |
-|       - |  358 | `   "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\` |
-|       - |  359 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
-|       - |  360 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
-|       - |  361 | `   "    $c = $string[$i];"\` |
-|       - |  362 | `   "    if( $c === 'z' ){ $string[$i] = 'a'; }"\` |
-|       - |  363 | `   "    elseif( $c === 'Z' ){ $string[$i] = 'A'; }"\` |
-|       - |  364 | `   "    elseif( $c === '9' ){ $string[$i] = '0'; }"\` |
-|       - |  365 | `   "    else { $string[$i] = chr(ord($c) + 1); return $string; }"\` |
-|       - |  366 | `   "  }"\` |
-|       - |  367 | `   "  $first = $string[0];"\` |
-|       - |  368 | `   "  if( $first === '0' ){ return '1' . $string; }"\` |
-|       - |  369 | `   "  if( $first === 'a' ){ return 'a' . $string; }"\` |
-|       - |  370 | `   "  return 'A' . $string;"\` |
-|       - |  371 | `   "}"\` |
-|       - |  372 | `   "/* php 8.3 str_decrement(): inverse of str_increment(); throws out of range"\` |
-|       - |  373 | `   " * at the bottom of the counting sequence. */"\` |
-|       - |  374 | `   "function str_decrement(string $string): string {"\` |
-|       - |  375 | `   "  if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) must not be empty'); }"\` |
-|       - |  376 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
-|       - |  377 | `   "  $orig = $string;"\` |
-|       - |  378 | `   "  $borrowed = false;"\` |
-|       - |  379 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
-|       - |  380 | `   "    $c = $string[$i];"\` |
-|       - |  381 | `   "    if( $c === 'a' ){ $string[$i] = 'z'; }"\` |
-|       - |  382 | `   "    elseif( $c === 'A' ){ $string[$i] = 'Z'; }"\` |
-|       - |  383 | `   "    elseif( $c === '0' ){ $string[$i] = '9'; }"\` |
-|       - |  384 | `   "    else { $string[$i] = chr(ord($c) - 1); $borrowed = false; break; }"\` |
-|       - |  385 | `   "    if( $i === 0 ){ $borrowed = true; }"\` |
-|       - |  386 | `   "  }"\` |
-|       - |  387 | `   "  if( $borrowed ){"\` |
-|       - |  388 | `   "    if( $string[0] === '9' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
-|       - |  389 | `   "    $string = substr($string, 1);"\` |
-|       - |  390 | `   "    if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
-|       - |  391 | `   "  } elseif( strlen($string) > 1 && $string[0] === '0' ){"\` |
-|       - |  392 | `   "    $string = substr($string, 1);"\` |
-|       - |  393 | `   "  }"\` |
-|       - |  394 | `   "  return $string;"\` |
-|       - |  395 | `   "}"\` |
-|       - |  396 | `   /* fileperms/fileowner/filegroup/fileinode moved to C (vfs.c, VfsStatField):` |
-|       - |  397 | `    * as prelude wrappers over stat() three of them said nothing on a failed stat` |
-|       - |  398 | `    * and the fourth raised trigger_error, whose errno is E_USER_WARNING's 512 and` |
-|       - |  399 | `    * whose line is this chunk's rather than the caller's. */\` |
-|       - |  400 | `   "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\` |
-|       - |  401 | `   "function clearstatcache(bool $clear_realpath_cache = false, string $filename = ''): void {}"\` |
-|       - |  402 | `   /* mb_ucfirst/mb_lcfirst moved to C (builtin_mb.c): as prelude wrappers they` |
-|       - |  403 | `    * dropped $encoding, UPPER-cased where php title-cases ('ß' -> 'SS' for php's` |
-|       - |  404 | `    * 'Ss') and lowered a leading Σ with nothing after it, which is php's FINAL` |
-|       - |  405 | `    * sigma and not what a first character gets. */\` |
-|       - |  406 | `   "/* Creates a temporary file and returns its name */"\` |
-|       - |  407 | `   "function tempnam(string $directory,string $prefix): string\|false"\` |
-|       - |  408 | `   "{"\` |
-|       - |  409 | `   "   /* php's Z_PARAM_PATH refusal on BOTH parameters (see scandir above); the prefix"\` |
-|       - |  410 | `   "    * is a path fragment there too, and PHL used to build a filename with the NUL"\` |
-|       - |  411 | `   "    * still in it. */"\` |
-|       - |  412 | `   "   if( strpos($directory, chr(0)) !== false ){"\` |
-|       - |  413 | `   "     throw new ValueError('tempnam(): Argument #1 ($directory) must not contain any null bytes');"\` |
-|       - |  414 | `   "   }"\` |
-|       - |  415 | `   "   if( strpos($prefix, chr(0)) !== false ){"\` |
-|       - |  416 | `   "     throw new ValueError('tempnam(): Argument #2 ($prefix) must not contain any null bytes');"\` |
-|       - |  417 | `   "   }"\` |
-|       - |  418 | `   "   /* php falls back to the system temporary directory when the one it was"\` |
-|       - |  419 | `   "    * given cannot HOLD the file, and says so -- except for the empty"\` |
-|       - |  420 | ``   "    * directory, which it reads as `use the temp dir` and answers silently."\`` |
-|       - |  421 | `   "    * PHL took '' literally and spent 64 tries failing at the filesystem"\` |
-|       - |  422 | `   "    * ROOT. Whether a directory can hold it is settled by TRYING, not by"\` |
-|       - |  423 | `   "    * asking is_writable(): the two disagree on Windows. */"\` |
-|       - |  424 | `   "   $zTmp = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR);"\` |
-|       - |  425 | `   "   $zDir = $directory === '' ? $zTmp : rtrim($directory, DIRECTORY_SEPARATOR);"\` |
-|       - |  426 | `   "   if( is_dir($zDir) && is_writable($zDir) ){"\` |
-|       - |  427 | `   "     $zOut = __tempnam_in($zDir, $prefix);"\` |
-|       - |  428 | `   "     if( $zOut !== false ){ return $zOut; }"\` |
-|       - |  429 | `   "   }"\` |
-|       - |  430 | `   "   if( $zDir === $zTmp ){ return false; }"\` |
-|       - |  431 | `   "   trigger_error(\"tempnam(): file created in the system's temporary directory\", E_USER_NOTICE);"\` |
-|       - |  432 | `   "   return __tempnam_in($zTmp, $prefix);"\` |
-|       - |  433 | `   "}"\` |
-|       - |  434 | `   "function __tempnam_in(string $zDir, string $prefix)"\` |
-|       - |  435 | `   "{"\` |
-|       - |  436 | `   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is"\` |
-|       - |  437 | `   "    * unique -- returning a bare name left the caller with a path that does"\` |
-|       - |  438 | `   "    * not exist, so file_exists() was false and unlink() failed on it. */"\` |
-|       - |  439 | `   "   for( $i = 0 ; $i < 64 ; ++$i ){"\` |
-|       - |  440 | `   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$prefix.rand_str(12);"\` |
-|       - |  441 | `   "     if( file_exists($zPath) ){ continue; }"\` |
-|       - |  442 | `   "     $pHandle = @fopen($zPath,'x');"\` |
-|       - |  443 | `   "     if( $pHandle === false ){ return false; }"\` |
-|       - |  444 | `   "     fclose($pHandle);"\` |
-|       - |  445 | `   "     @chmod($zPath, 0600);"\` |
-|       - |  446 | `   "     return $zPath;"\` |
-|       - |  447 | `   "   }"\` |
-|       - |  448 | `   "   return false;"\` |
-|       - |  449 | `   "}"\` |
-|       - |  450 | `	/* fileowner/filegroup/fileinode: see the note beside fileperms above. */\` |
-|       - |  451 | `	""` |
-|       - |  452 |  |
-|       - |  453 | `/*` |
-|       - |  454 | ` * ---------------------------------------------------------------------------` |
-|       - |  455 | ` * The Exception / Error family, declared from C.` |
-|       - |  456 | ` *` |
-|       - |  457 | ` * php's two roots are one implementation twice over (its stub says` |
-|       - |  458 | `` * `@implementation-alias Exception::__construct` for every one of Error's`` |
-|       - |  459 | ` * methods), so the bodies below are shared by both spec tables and the` |
-|       - |  460 | ` * ~20 subclasses are declaration-only rows.` |
-|       - |  461 | ` *` |
-|       - |  462 | `` * php's seven slots, in php's own declaration order. `string` is php's cache of`` |
-|       - |  463 | ` * the __toString rendering -- unused by the engine but PRESENT on every` |
-|       - |  464 | ` * presentation surface, which is why it is declared here rather than skipped:` |
-|       - |  465 | ` * var_dump/print_r/(array)/serialize all show it, and PHL was one property short` |
-|       - |  466 | ` * of php on every exception ever printed.` |
-|       - |  467 | ` * ---------------------------------------------------------------------------` |
-|       - |  468 | ` */` |
-|       - |  469 | `#define EXC_MESSAGE  "message"` |
-|       - |  470 | `#define EXC_STRING   "string"` |
-|       - |  471 | `#define EXC_CODE     "code"` |
-|       - |  472 | `#define EXC_FILE     "file"` |
-|       - |  473 | `#define EXC_LINE     "line"` |
-|       - |  474 | `#define EXC_TRACE    "trace"` |
-|       - |  475 | `#define EXC_PREVIOUS "previous"` |
-|       - |  476 | `#define EXC_SEVERITY "severity"` |
-|       - |  477 | `/*` |
-|       - |  478 | ` * Answer a declared slot the way php's getter does. Three of the seven CONVERT` |
-|       - |  479 | ` * rather than copy — getMessage()/getFile() answer a string and getLine() an int,` |
-|       - |  480 | ` * whatever the slot holds — and that shows twice: a subclass assigning` |
-|       - |  481 | `` * `$this->message = 5` reads back "5", and a slot __wakeup has DROPPED reads as`` |
-|       - |  482 | ` * "" rather than null. The other four are verbatim copies (getCode() of that same` |
-|       - |  483 | ` * subclass really is the int).` |
-|       - |  484 | ` */` |
-|       - |  485 | `#define EXC_READ_RAW 0` |
-|       - |  486 | `#define EXC_READ_STR 1` |
-|       - |  487 | `#define EXC_READ_INT 2` |
-|   18435 |  488 | `static int VmExcReadSlot(ph7_context *pCtx,const char *zSlot,int iAs)` |
-|       5 |  489 | `{` |
-|   18440 |  490 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   18440 |  491 | `	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;` |
-|       - |  492 | `	ph7_value sTmp;` |
-|   18440 |  493 | `	if( iAs == EXC_READ_RAW ){` |
-|     584 |  494 | `		if( pVal ){` |
-|     584 |  495 | `			ph7_result_value(pCtx,pVal);` |
-|     294 |  496 | `		}else{` |
-|     ! 0 |  497 | `			ph7_result_null(pCtx);` |
-|       - |  498 | `		}` |
-|     584 |  499 | `		return PH7_OK;` |
-|       - |  500 | `	}` |
-|       - |  501 | `	/* Through a COPY: converting the slot would rewrite the exception's state. */` |
-|   17860 |  502 | `	PH7_MemObjInit(pCtx->pVm,&sTmp);` |
-|   17860 |  503 | `	if( pVal ){` |
-|   17860 |  504 | `		PH7_MemObjStore(pVal,&sTmp);` |
-|    8900 |  505 | `	}` |
-|   17860 |  506 | `	if( iAs == EXC_READ_INT ){` |
-|     711 |  507 | `		PH7_MemObjToInteger(&sTmp);` |
-|     358 |  508 | `	}else{` |
-|   17154 |  509 | `		PH7_MemObjToString(&sTmp);` |
-|       - |  510 | `	}` |
-|   17860 |  511 | `	ph7_result_value(pCtx,&sTmp);` |
-|   17860 |  512 | `	PH7_MemObjRelease(&sTmp);` |
-|   17860 |  513 | `	return PH7_OK;` |
-|    9195 |  514 | `}` |
-|   16479 |  515 | `static int vm_builtin_Exception_getMessage(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       5 |  516 | `{` |
-|    8212 |  517 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|   16484 |  518 | `	return VmExcReadSlot(pCtx,EXC_MESSAGE,EXC_READ_STR);` |
-|       5 |  519 | `}` |
-|     494 |  520 | `static int vm_builtin_Exception_getCode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       4 |  521 | `{` |
-|     247 |  522 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     498 |  523 | `	return VmExcReadSlot(pCtx,EXC_CODE,EXC_READ_RAW);` |
-|       4 |  524 | `}` |
-|     670 |  525 | `static int vm_builtin_Exception_getFile(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       5 |  526 | `{` |
-|     335 |  527 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     675 |  528 | `	return VmExcReadSlot(pCtx,EXC_FILE,EXC_READ_STR);` |
-|       5 |  529 | `}` |
-|     706 |  530 | `static int vm_builtin_Exception_getLine(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       5 |  531 | `{` |
-|     353 |  532 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     711 |  533 | `	return VmExcReadSlot(pCtx,EXC_LINE,EXC_READ_INT);` |
-|       5 |  534 | `}` |
-|      60 |  535 | `static int vm_builtin_Exception_getTrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       2 |  536 | `{` |
-|      30 |  537 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|      62 |  538 | `	return VmExcReadSlot(pCtx,EXC_TRACE,EXC_READ_RAW);` |
-|       2 |  539 | `}` |
-|      22 |  540 | `static int vm_builtin_Exception_getPrevious(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       2 |  541 | `{` |
-|      11 |  542 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|      24 |  543 | `	return VmExcReadSlot(pCtx,EXC_PREVIOUS,EXC_READ_RAW);` |
-|       2 |  544 | `}` |
-|       4 |  545 | `static int vm_builtin_ErrorException_getSeverity(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 |  546 | `{` |
-|       2 |  547 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|       5 |  548 | `	return VmExcReadSlot(pCtx,EXC_SEVERITY,EXC_READ_RAW);` |
-|       1 |  549 | `}` |
-|       - |  550 | `/*` |
-|       - |  551 | ` * php's zend_update_exception_properties: each of the three is written only when` |
-|       - |  552 | ``  * the caller actually supplied it — a message when the argument was PASSED (`""` `` |
-|       - |  553 | ` * included), a code when it is NON-ZERO, a previous when it is an object. That is` |
-|       - |  554 | ` * not the same as writing the defaults: a subclass may redeclare` |
-|       - |  555 | `` * `protected $message = 'default'`, and php keeps it for `new Sub()`.`` |
-|       - |  556 | ` */` |
-| 1466127 |  557 | `static void VmExcInitProps(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,` |
-|       - |  558 | `	ph7_value **apArg,int iPrev)` |
-|       5 |  559 | `{` |
-| 1466132 |  560 | `	if( nArg > 0 ){` |
-| 1466028 |  561 | `		int nMsg = 0;` |
-| 1466028 |  562 | `		const char *zMsg = ph7_value_to_string(apArg[0],&nMsg);` |
-| 1466028 |  563 | `		PH7_NativeSetAttrStr(pCtx->pVm,pThis,EXC_MESSAGE,zMsg,nMsg);` |
-|  732984 |  564 | `	}` |
-| 1466132 |  565 | `	if( nArg > 1 ){` |
-|       - |  566 | `		ph7_value sCode;` |
-|     517 |  567 | `		PH7_MemObjInit(pCtx->pVm,&sCode);` |
-|     517 |  568 | `		PH7_MemObjStore(apArg[1],&sCode);` |
-|     517 |  569 | `		PH7_MemObjToInteger(&sCode);` |
-|     517 |  570 | `		if( sCode.x.iVal != 0 ){` |
-|     488 |  571 | `			PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_CODE,sCode.x.iVal);` |
-|     243 |  572 | `		}` |
-|     517 |  573 | `		PH7_MemObjRelease(&sCode);` |
-|     256 |  574 | `	}` |
-|       - |  575 | ``	/* php's `previous` is the LAST parameter of each constructor, and`` |
-|       - |  576 | `	 * ErrorException's is #5 rather than #2. */` |
-| 1466132 |  577 | `	if( nArg > iPrev && (apArg[iPrev]->iFlags & MEMOBJ_OBJ) && apArg[iPrev]->x.pOther ){` |
-|      34 |  578 | `		PH7_NativeSetAttrObj(pCtx->pVm,pThis,EXC_PREVIOUS,` |
-|      20 |  579 | `			(ph7_class_instance *)apArg[iPrev]->x.pOther);` |
-|      10 |  580 | `	}` |
-| 1466132 |  581 | `}` |
-| 1466111 |  582 | `static int vm_builtin_Exception_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       5 |  583 | `{` |
-| 1466116 |  584 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-| 1466116 |  585 | `	if( pThis ){` |
-| 1466116 |  586 | `		VmExcInitProps(pCtx,pThis,nArg,apArg,2);` |
-|  733028 |  587 | `	}` |
-| 1466116 |  588 | `	return PH7_OK;` |
-|       5 |  589 | `}` |
-|       - |  590 | `/*` |
-|       - |  591 | ` * ErrorException's own constructor: php's Exception three, then severity, then` |
-|       - |  592 | `` * the OPTIONAL file/line overrides. php's `?string $filename = null` /`` |
-|       - |  593 | `` * `?int $line = null` mean "keep the creation site" — the chunk defaulted them to`` |
-|       - |  594 | ` * __FILE__/__LINE__, which resolved against the EMBEDDED chunk and reported` |
-|       - |  595 | `` * `:MEMORY:` line 1 for every ErrorException that did not pass them. php's one`` |
-|       - |  596 | ` * asymmetry: a filename WITHOUT a line resets the line to 0.` |
-|       - |  597 | ` */` |
-|      16 |  598 | `static int vm_builtin_ErrorException_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 |  599 | `{` |
-|      17 |  600 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|      17 |  601 | `	if( pThis == 0 ){` |
-|     ! 0 |  602 | `		return PH7_OK;` |
-|       - |  603 | `	}` |
-|      17 |  604 | `	VmExcInitProps(pCtx,pThis,nArg,apArg,5);` |
-|      17 |  605 | `	if( nArg > 2 ){` |
-|      11 |  606 | `		PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_SEVERITY,ph7_value_to_int64(apArg[2]));` |
-|       5 |  607 | `	}` |
-|      17 |  608 | `	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){` |
-|       9 |  609 | `		int nFile = 0;` |
-|       9 |  610 | `		const char *zFile = ph7_value_to_string(apArg[3],&nFile);` |
-|       9 |  611 | `		PH7_NativeSetAttrStr(pCtx->pVm,pThis,EXC_FILE,zFile,nFile);` |
-|       9 |  612 | `		if( nArg < 5 \|\| ph7_value_is_null(apArg[4]) ){` |
-|       3 |  613 | `			PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_LINE,0);` |
-|       1 |  614 | `		}` |
-|       4 |  615 | `	}` |
-|      17 |  616 | `	if( nArg > 4 && !ph7_value_is_null(apArg[4]) ){` |
-|       7 |  617 | `		PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_LINE,ph7_value_to_int64(apArg[4]));` |
-|       3 |  618 | `	}` |
-|      17 |  619 | `	return PH7_OK;` |
-|       9 |  620 | `}` |
-|       - |  621 | `/*` |
-|       - |  622 | ` * php's private __clone. It has an empty body and is never reached: the class` |
-|       - |  623 | ` * carries php's own clone refusal (PH7_CLASS_NOCLONE, answered before any body` |
-|       - |  624 | `` * runs), which is what `clone $e` reports — "Trying to clone an uncloneable`` |
-|       - |  625 | ` * object of class X", not a visibility error. Declaring it is still php-visible:` |
-|       - |  626 | `` * Reflection lists it, and `$e->__clone()` from inside the class works.`` |
-|       - |  627 | ` */` |
-|     ! 0 |  628 | `static int vm_builtin_Exception_clone(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     ! 0 |  629 | `{` |
-|     ! 0 |  630 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     ! 0 |  631 | `	ph7_result_null(pCtx);` |
-|     ! 0 |  632 | `	return PH7_OK;` |
-|     ! 0 |  633 | `}` |
-|       - |  634 | `/*` |
-|       - |  635 | ` * php's __wakeup: the two UNTYPED slots are the only ones a serialized payload` |
-|       - |  636 | ` * can lie about (the other five are typed and the store enforces them), so php` |
-|       - |  637 | ` * DROPS a message that is not a string and a code that is not an int rather than` |
-|       - |  638 | ` * letting a method read one.` |
-|       - |  639 | ` */` |
-|     ! 0 |  640 | `static void VmExcDropSlot(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)` |
-|     ! 0 |  641 | `{` |
-|     ! 0 |  642 | `	SyHashEntry *pEntry = SyHashGet(&pThis->hAttr,(const void *)zSlot,SyStrlen(zSlot));` |
-|     ! 0 |  643 | `	if( pEntry ){` |
-|     ! 0 |  644 | `		PH7_VmReleaseInstanceAttr(&(*pVm),(VmClassAttr *)pEntry->pUserData);` |
-|     ! 0 |  645 | `		PH7_ClassInstanceDeleteAttrEntry(pThis,pEntry);` |
-|     ! 0 |  646 | `	}` |
-|     ! 0 |  647 | `}` |
-|     ! 0 |  648 | `static int vm_builtin_Exception_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     ! 0 |  649 | `{` |
-|     ! 0 |  650 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|       - |  651 | `	ph7_value *pVal;` |
-|     ! 0 |  652 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     ! 0 |  653 | `	if( pThis == 0 ){` |
-|     ! 0 |  654 | `		return PH7_OK;` |
-|       - |  655 | `	}` |
-|     ! 0 |  656 | `	pVal = PH7_NativeAttr(pThis,EXC_MESSAGE);` |
-|     ! 0 |  657 | `	if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 && (pVal->iFlags & MEMOBJ_STRING) == 0 ){` |
-|     ! 0 |  658 | `		VmExcDropSlot(pCtx->pVm,pThis,EXC_MESSAGE);` |
-|     ! 0 |  659 | `	}` |
-|     ! 0 |  660 | `	pVal = PH7_NativeAttr(pThis,EXC_CODE);` |
-|     ! 0 |  661 | `	if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 && (pVal->iFlags & MEMOBJ_INT) == 0 ){` |
-|     ! 0 |  662 | `		VmExcDropSlot(pCtx->pVm,pThis,EXC_CODE);` |
-|     ! 0 |  663 | `	}` |
-|     ! 0 |  664 | `	ph7_result_null(pCtx);` |
-|     ! 0 |  665 | `	return PH7_OK;` |
-|     ! 0 |  666 | `}` |
-|       - |  667 | `/*` |
-|       - |  668 | ` * One argument of a trace frame, php's smart_str_append_scalar: a string is` |
-|       - |  669 | `` * single-quoted, ESCAPED (`\n`, `\xNN` for anything non-printable) and truncated`` |
-|       - |  670 | `` * to 15 bytes with `...` inside the quotes; a float takes php's precision; an`` |
-|       - |  671 | `` * enum case prints `Enum::Case`; and anything else is a bare word.`` |
-|       - |  672 | ` */` |
-|       - |  673 | `#define EXC_ARG_MAX 15` |
-|     106 |  674 | `static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg)` |
-|       2 |  675 | `{` |
-|     108 |  676 | `	if( pArg == 0 \|\| (pArg->iFlags & MEMOBJ_NULL) ){` |
-|       3 |  677 | `		SyBlobAppend(pOut,"NULL",sizeof("NULL")-1);` |
-|       3 |  678 | `		return;` |
-|       - |  679 | `	}` |
-|     106 |  680 | `	if( pArg->iFlags & MEMOBJ_BOOL ){` |
-|       5 |  681 | `		if( pArg->x.iVal ){` |
-|       3 |  682 | `			SyBlobAppend(pOut,"true",sizeof("true")-1);` |
-|       2 |  683 | `		}else{` |
-|       3 |  684 | `			SyBlobAppend(pOut,"false",sizeof("false")-1);` |
-|       - |  685 | `		}` |
-|       5 |  686 | `		return;` |
-|       - |  687 | `	}` |
-|     102 |  688 | `	if( pArg->iFlags & MEMOBJ_HASHMAP ){` |
-|       3 |  689 | `		SyBlobAppend(pOut,"Array",sizeof("Array")-1);` |
-|       3 |  690 | `		return;` |
-|       - |  691 | `	}` |
-|     100 |  692 | `	if( pArg->iFlags & MEMOBJ_OBJ ){` |
-|       3 |  693 | `		ph7_class_instance *pObj = (ph7_class_instance *)pArg->x.pOther;` |
-|       3 |  694 | `		if( pObj && pObj->pClass && (pObj->pClass->iFlags & PH7_CLASS_ENUM) ){` |
-|     ! 0 |  695 | `			ph7_value *pName = PH7_NativeAttr(pObj,"name");` |
-|     ! 0 |  696 | `			SyBlobFormat(pOut,"%z::",&pObj->pClass->sDisp);` |
-|     ! 0 |  697 | `			if( pName ){` |
-|     ! 0 |  698 | `				SyBlobAppend(pOut,SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));` |
-|     ! 0 |  699 | `			}` |
-|     ! 0 |  700 | `			return;` |
-|       - |  701 | `		}` |
-|       3 |  702 | `		SyBlobAppend(pOut,"Object(",sizeof("Object(")-1);` |
-|       3 |  703 | `		if( pObj && pObj->pClass ){` |
-|       3 |  704 | `			SyBlobFormat(pOut,"%z",&pObj->pClass->sDisp);` |
-|       1 |  705 | `		}` |
-|       3 |  706 | `		SyBlobAppend(pOut,")",sizeof(")")-1);` |
-|       3 |  707 | `		return;` |
-|       - |  708 | `	}` |
-|      98 |  709 | `	if( pArg->iFlags & MEMOBJ_STRING ){` |
-|       - |  710 | `		/* php 8.5 does not put string CONTENT in a trace at all: every non-empty` |
-|       - |  711 | `		 * one renders as '...' (the empty one still shows as ''), so a password` |
-|       - |  712 | `		 * or a token passed to the function that threw cannot reach a log through` |
-|       - |  713 | `		 * the trace. The truncate-at-15-and-escape shape here was php 8.4's. */` |
-|      52 |  714 | `		if( SyBlobLength(&pArg->sBlob) < 1 ){` |
-|       3 |  715 | `			SyBlobAppend(pOut,"''",sizeof("''")-1);` |
-|       2 |  716 | `		}else{` |
-|      50 |  717 | `			SyBlobAppend(pOut,"'...'",sizeof("'...'")-1);` |
-|       - |  718 | `		}` |
-|      52 |  719 | `		return;` |
-|       - |  720 | `	}` |
-|       - |  721 | `	{` |
-|       - |  722 | `		/* int / float / anything else: php prints the scalar itself -- but a` |
-|       - |  723 | `		 * trace FLOAT always shows its fraction (1.0, not the "1" the ordinary` |
-|       - |  724 | `		 * string cast produces), which is what tells a float argument apart from` |
-|       - |  725 | `		 * an int one. INF/NAN and the exponent forms already carry a marker. */` |
-|       - |  726 | `		ph7_value sTmp;` |
-|       - |  727 | `		const char *z;` |
-|       - |  728 | `		sxu32 n,i;` |
-|      47 |  729 | `		int bMarked = 0;` |
-|      47 |  730 | `		PH7_MemObjInit(&(*pVm),&sTmp);` |
-|      47 |  731 | `		PH7_MemObjStore(pArg,&sTmp);` |
-|      47 |  732 | `		PH7_MemObjToString(&sTmp);` |
-|      47 |  733 | `		z = (const char *)SyBlobData(&sTmp.sBlob);` |
-|      47 |  734 | `		n = SyBlobLength(&sTmp.sBlob);` |
-|      47 |  735 | `		SyBlobAppend(pOut,z,n);` |
-|      47 |  736 | `		if( pArg->iFlags & MEMOBJ_REAL ){` |
-|      23 |  737 | `			for( i = 0 ; i < n ; ++i ){` |
-|      19 |  738 | `				if( z[i] < '0' \|\| z[i] > '9' ){` |
-|      11 |  739 | `					if( z[i] != '-' && z[i] != '+' ){` |
-|       9 |  740 | `						bMarked = 1;` |
-|       9 |  741 | `						break;` |
-|       - |  742 | `					}` |
-|       1 |  743 | `				}` |
-|       6 |  744 | `			}` |
-|      13 |  745 | `			if( !bMarked ){` |
-|       5 |  746 | `				SyBlobAppend(pOut,".0",sizeof(".0")-1);` |
-|       2 |  747 | `			}` |
-|       6 |  748 | `		}` |
-|      47 |  749 | `		PH7_MemObjRelease(&sTmp);` |
-|       - |  750 | `	}` |
-|      55 |  751 | `}` |
-|       - |  752 | `/* An element of a trace frame, or NULL when the frame does not carry it. */` |
-|    4158 |  753 | `static ph7_value * VmExcFrameField(ph7_vm *pVm,ph7_hashmap *pFrame,const char *zField)` |
-|       5 |  754 | `{` |
-|    4163 |  755 | `	ph7_hashmap_node *pNode = 0;` |
-|       - |  756 | `	ph7_value sKey;` |
-|       - |  757 | `	sxi32 rc;` |
-|       - |  758 | `	SyString sName;` |
-|    4163 |  759 | `	SyStringInitFromBuf(&sName,zField,SyStrlen(zField));` |
-|    4163 |  760 | `	PH7_MemObjInitFromString(&(*pVm),&sKey,&sName);` |
-|    4163 |  761 | `	rc = PH7_HashmapLookup(pFrame,&sKey,&pNode);` |
-|    4163 |  762 | `	PH7_MemObjRelease(&sKey);` |
-|    4163 |  763 | `	if( rc != SXRET_OK \|\| pNode == 0 ){` |
-|    1953 |  764 | `		return 0;` |
-|       - |  765 | `	}` |
-|    2215 |  766 | `	return (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);` |
-|    2084 |  767 | `}` |
-|    2776 |  768 | `static void VmExcFrameStr(SyBlob *pOut,ph7_value *pVal)` |
-|       5 |  769 | `{` |
-|    2781 |  770 | `	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){` |
-|    1441 |  771 | `		SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));` |
-|     718 |  772 | `	}` |
-|    2781 |  773 | `}` |
-|       - |  774 | `/* A slot's string form, taken through a COPY: converting the value in place` |
-|       - |  775 | ` * would rewrite the exception's own state. */` |
-|       6 |  776 | `static void VmExcValueStr(ph7_vm *pVm,ph7_value *pVal,SyBlob *pOut)` |
-|       1 |  777 | `{` |
-|       - |  778 | `	ph7_value sTmp;` |
-|       7 |  779 | `	if( pVal == 0 ){` |
-|     ! 0 |  780 | `		return;` |
-|       - |  781 | `	}` |
-|       7 |  782 | `	PH7_MemObjInit(&(*pVm),&sTmp);` |
-|       7 |  783 | `	PH7_MemObjStore(pVal,&sTmp);` |
-|       7 |  784 | `	PH7_MemObjToString(&sTmp);` |
-|       7 |  785 | `	SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));` |
-|       7 |  786 | `	PH7_MemObjRelease(&sTmp);` |
-|       4 |  787 | `}` |
-|       - |  788 | ``/* Does the blob contain this literal? SyBlobSearch() is `#ifndef`` |
-|       - |  789 | `` * PH7_DISABLE_BUILTIN_FUNC`, and the exception family exists in the tiny build`` |
-|       - |  790 | ` * too, so the one search this file needs is spelled out. */` |
-|     ! 0 |  791 | `static int VmExcBlobHas(SyBlob *pBlob,const char *zPat,sxu32 nPat)` |
-|     ! 0 |  792 | `{` |
-|     ! 0 |  793 | `	const char *z = (const char *)SyBlobData(pBlob);` |
-|     ! 0 |  794 | `	sxu32 n = SyBlobLength(pBlob);` |
-|       - |  795 | `	sxu32 i;` |
-|     ! 0 |  796 | `	if( nPat == 0 \|\| n < nPat ){` |
-|     ! 0 |  797 | `		return 0;` |
-|       - |  798 | `	}` |
-|     ! 0 |  799 | `	for( i = 0 ; i + nPat <= n ; i++ ){` |
-|     ! 0 |  800 | `		if( SyMemcmp((const void *)&z[i],(const void *)zPat,nPat) == 0 ){` |
-|     ! 0 |  801 | `			return 1;` |
-|       - |  802 | `		}` |
-|     ! 0 |  803 | `	}` |
-|     ! 0 |  804 | `	return 0;` |
-|     ! 0 |  805 | `}` |
-|       - |  806 | ``/* php's `Z_OBJCE_P == zend_ce_type_error \|\| == zend_ce_argument_count_error`:`` |
-|       - |  807 | ` * the two classes whose message __toString finishes with " and defined". */` |
-|       6 |  808 | `static int VmExcIsArgError(ph7_vm *pVm,ph7_class_instance *pExc)` |
-|       1 |  809 | `{` |
-|       7 |  810 | `	ph7_class *pClass = pExc ? pExc->pClass : 0;` |
-|       - |  811 | `	ph7_class *pType;` |
-|       7 |  812 | `	if( pClass == 0 ){` |
-|     ! 0 |  813 | `		return 0;` |
-|       - |  814 | `	}` |
-|       7 |  815 | `	pType = PH7_VmExtractClass(&(*pVm),"TypeError",sizeof("TypeError")-1,FALSE,0);` |
-|       7 |  816 | `	if( pType && pClass == pType ){` |
-|     ! 0 |  817 | `		return 1;` |
-|       - |  818 | `	}` |
-|       7 |  819 | `	pType = PH7_VmExtractClass(&(*pVm),"ArgumentCountError",sizeof("ArgumentCountError")-1,FALSE,0);` |
-|       7 |  820 | `	return pType != 0 && pClass == pType;` |
-|       4 |  821 | `}` |
-|       - |  822 | `/*` |
-|       - |  823 | `` * php's zend_trace_to_string: one `#N file(line): Class->method(args)` line per`` |
-|       - |  824 | `` * frame, then `#N {main}` with NO trailing newline. A frame with no `file` is`` |
-|       - |  825 | `` * php's `[internal function]: `.`` |
-|       - |  826 | ` */` |
-|     712 |  827 | `PH7_PRIVATE void PH7_VmTraceToString(ph7_vm *pVm,ph7_value *pTrace,int bMainMarker,SyBlob *pOut)` |
-|       5 |  828 | `{` |
-|       - |  829 | `	ph7_hashmap *pMap;` |
-|       - |  830 | `	ph7_hashmap_node *pEntry;` |
-|     717 |  831 | `	sxu32 nFrame = 0;` |
-|     717 |  832 | `	if( pTrace && (pTrace->iFlags & MEMOBJ_HASHMAP) && pTrace->x.pOther ){` |
-|     717 |  833 | `		pMap = (ph7_hashmap *)pTrace->x.pOther;` |
-|       - |  834 | `		/* Insertion order is pFirst then the pPrev chain (rule 12). */` |
-|    1411 |  835 | `		for( pEntry = pMap->pFirst ; pEntry ; pEntry = pEntry->pPrev ){` |
-|     699 |  836 | `			ph7_value *pFrameVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nValIdx);` |
-|       - |  837 | `			ph7_hashmap *pFrame;` |
-|       - |  838 | `			ph7_value *pFile;` |
-|     699 |  839 | `			if( pFrameVal == 0 \|\| (pFrameVal->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
-|     ! 0 |  840 | `				continue;` |
-|       - |  841 | `			}` |
-|     699 |  842 | `			pFrame = (ph7_hashmap *)pFrameVal->x.pOther;` |
-|     699 |  843 | `			SyBlobFormat(pOut,"#%u ",nFrame);` |
-|     699 |  844 | `			pFile = VmExcFrameField(&(*pVm),pFrame,"file");` |
-|    1043 |  845 | `			if( pFile && (pFile->iFlags & MEMOBJ_STRING) ){` |
-|     693 |  846 | `				ph7_value *pLine = VmExcFrameField(&(*pVm),pFrame,"line");` |
-|     693 |  847 | `				VmExcFrameStr(pOut,pFile);` |
-|    1381 |  848 | `				SyBlobFormat(pOut,"(%qd): ",` |
-|     688 |  849 | `					(pLine && (pLine->iFlags & MEMOBJ_INT)) ? pLine->x.iVal : (sxi64)0);` |
-|     349 |  850 | `			}else{` |
-|       8 |  851 | `				SyBlobAppend(pOut,"[internal function]: ",sizeof("[internal function]: ")-1);` |
-|       - |  852 | `			}` |
-|     699 |  853 | `			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"class"));` |
-|     699 |  854 | `			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"type"));` |
-|     699 |  855 | `			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"function"));` |
-|     699 |  856 | `			SyBlobAppend(pOut,"(",sizeof("(")-1);` |
-|       - |  857 | `			{` |
-|     699 |  858 | `				ph7_value *pArgs = VmExcFrameField(&(*pVm),pFrame,"args");` |
-|     699 |  859 | `				if( pArgs && (pArgs->iFlags & MEMOBJ_HASHMAP) && pArgs->x.pOther ){` |
-|      94 |  860 | `					ph7_hashmap *pArgMap = (ph7_hashmap *)pArgs->x.pOther;` |
-|       - |  861 | `					ph7_hashmap_node *pArg;` |
-|      94 |  862 | `					int bFirst = 1;` |
-|     200 |  863 | `					for( pArg = pArgMap->pFirst ; pArg ; pArg = pArg->pPrev ){` |
-|     108 |  864 | `						if( !bFirst ){` |
-|      17 |  865 | `							SyBlobAppend(pOut,", ",sizeof(", ")-1);` |
-|       8 |  866 | `						}` |
-|     108 |  867 | `						bFirst = 0;` |
-|     161 |  868 | `						VmExcTraceArg(&(*pVm),pOut,` |
-|      53 |  869 | `							(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pArg->nValIdx));` |
-|      55 |  870 | `					}` |
-|      46 |  871 | `				}` |
-|       - |  872 | `			}` |
-|     699 |  873 | `			SyBlobAppend(pOut,")\n",sizeof(")\n")-1);` |
-|     699 |  874 | `			nFrame++;` |
-|     352 |  875 | `		}` |
-|     356 |  876 | `	}` |
-|     717 |  877 | `	if( bMainMarker ){` |
-|       - |  878 | `		/* getTraceAsString() ends on the bottom marker; debug_print_backtrace()` |
-|       - |  879 | `		 * does not print one -- it stops after the last real frame. */` |
-|     675 |  880 | `		SyBlobFormat(pOut,"#%u {main}",nFrame);` |
-|     335 |  881 | `	}` |
-|     717 |  882 | `}` |
-|     642 |  883 | `static int vm_builtin_Exception_getTraceAsString(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       5 |  884 | `{` |
-|     647 |  885 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|       - |  886 | `	SyBlob sOut;` |
-|     321 |  887 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     647 |  888 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
-|     647 |  889 | `	PH7_VmTraceToString(pCtx->pVm,pThis ? PH7_NativeAttr(pThis,EXC_TRACE) : 0,TRUE,&sOut);` |
-|     647 |  890 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|     647 |  891 | `	SyBlobRelease(&sOut);` |
-|     647 |  892 | `	return PH7_OK;` |
-|       5 |  893 | `}` |
-|       - |  894 | `/*` |
-|       - |  895 | ` * php's Exception::__toString.` |
-|       - |  896 | ` *` |
-|       - |  897 | ` *    C: message in file:line` |
-|       - |  898 | ` *    Stack trace:` |
-|       - |  899 | ` *    <trace>` |
-|       - |  900 | ` *` |
-|       - |  901 | ` * The PREVIOUS chain is part of the format and the ORDER is inverted: php builds` |
-|       - |  902 | `` * the string innermost-first and joins the shallower ones after `\n\nNext `, so`` |
-|       - |  903 | ` * the root cause is printed first. The chunk answered a four-field space-joined` |
-|       - |  904 | `` * line instead — `file line code message` — which no php ever produced, and it is`` |
-|       - |  905 | `` * what an uncaught exception, `echo $e` and `(string)$e` all show.`` |
-|       - |  906 | ` *` |
-|       - |  907 | ` * The walk carries its ancestors on the C stack (rule 31): php protects each` |
-|       - |  908 | `` * object it visits and stops when it comes back round, and a `$a->previous = $b;`` |
-|       - |  909 | `` * $b->previous = $a` pair must not spin.`` |
-|       - |  910 | ` */` |
-|       - |  911 | `#define EXC_CHAIN_MAX 256` |
-|       4 |  912 | `static int vm_builtin_Exception_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 |  913 | `{` |
-|       - |  914 | `	ph7_class_instance *apChain[EXC_CHAIN_MAX];` |
-|       5 |  915 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|       5 |  916 | `	ph7_vm *pVm = pCtx->pVm;` |
-|       - |  917 | `	SyBlob sOut;` |
-|       5 |  918 | `	int nChain = 0;` |
-|       - |  919 | `	int i,j;` |
-|       2 |  920 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|      11 |  921 | `	while( pThis && nChain < EXC_CHAIN_MAX ){` |
-|       - |  922 | `		ph7_class_instance *pPrev;` |
-|       9 |  923 | `		for( j = 0 ; j < nChain ; j++ ){` |
-|       3 |  924 | `			if( apChain[j] == pThis ){` |
-|     ! 0 |  925 | `				pThis = 0;    /* already on the chain: php's recursion protection */` |
-|     ! 0 |  926 | `				break;` |
-|       - |  927 | `			}` |
-|       2 |  928 | `		}` |
-|       7 |  929 | `		if( pThis == 0 ){` |
-|     ! 0 |  930 | `			break;` |
-|       - |  931 | `		}` |
-|       7 |  932 | `		apChain[nChain++] = pThis;` |
-|       7 |  933 | `		pPrev = PH7_NativeAttrObj(pThis,EXC_PREVIOUS);` |
-|       7 |  934 | `		pThis = pPrev;` |
-|       1 |  935 | `	}` |
-|       - |  936 | `	/* php formats the SHALLOWEST first and pushes each one it has already built` |
-|       - |  937 | `	 * behind the next, so the printed order is inverted: the ROOT CAUSE leads and` |
-|       - |  938 | ``	 * every caller follows it after `\n\nNext `. */`` |
-|       5 |  939 | `	SyBlobInit(&sOut,&pVm->sAllocator);` |
-|      11 |  940 | `	for( i = 0 ; i < nChain ; i++ ){` |
-|       7 |  941 | `		ph7_class_instance *pExc = apChain[i];` |
-|       7 |  942 | `		ph7_value *pLine = PH7_NativeAttr(pExc,EXC_LINE);` |
-|       - |  943 | `		SyBlob sMsg;` |
-|       - |  944 | `		SyBlob sThis;` |
-|       7 |  945 | `		SyBlobInit(&sMsg,&pVm->sAllocator);` |
-|       7 |  946 | `		SyBlobInit(&sThis,&pVm->sAllocator);` |
-|       7 |  947 | `		VmExcValueStr(pVm,PH7_NativeAttr(pExc,EXC_MESSAGE),&sMsg);` |
-|       - |  948 | `		/* php's one message rewrite: a TypeError/ArgumentCountError raised at a` |
-|       - |  949 | `		 * CALL SITE says "..., called in F on line N", and __toString finishes the` |
-|       - |  950 | `		 * sentence with " and defined". */` |
-|       6 |  951 | `		if( VmExcIsArgError(pVm,pExc)` |
-|       4 |  952 | `		 && VmExcBlobHas(&sMsg,", called in ",sizeof(", called in ")-1) ){` |
-|     ! 0 |  953 | `			SyBlobAppend(&sMsg," and defined",sizeof(" and defined")-1);` |
-|     ! 0 |  954 | `		}` |
-|       7 |  955 | `		SyBlobFormat(&sThis,"%z",&pExc->pClass->sDisp);` |
-|       7 |  956 | `		if( SyBlobLength(&sMsg) > 0 ){` |
-|       5 |  957 | `			SyBlobAppend(&sThis,": ",sizeof(": ")-1);` |
-|       5 |  958 | `			SyBlobAppend(&sThis,SyBlobData(&sMsg),SyBlobLength(&sMsg));` |
-|       2 |  959 | `		}` |
-|       7 |  960 | `		SyBlobAppend(&sThis," in ",sizeof(" in ")-1);` |
-|       7 |  961 | `		VmExcFrameStr(&sThis,PH7_NativeAttr(pExc,EXC_FILE));` |
-|      10 |  962 | `		SyBlobFormat(&sThis,":%qd\nStack trace:\n",` |
-|       6 |  963 | `			(pLine && (pLine->iFlags & MEMOBJ_INT)) ? pLine->x.iVal : (sxi64)0);` |
-|       7 |  964 | `		PH7_VmTraceToString(pVm,PH7_NativeAttr(pExc,EXC_TRACE),TRUE,&sThis);` |
-|       7 |  965 | `		if( SyBlobLength(&sOut) > 0 ){` |
-|       3 |  966 | `			SyBlobAppend(&sThis,"\n\nNext ",sizeof("\n\nNext ")-1);` |
-|       3 |  967 | `			SyBlobAppend(&sThis,SyBlobData(&sOut),SyBlobLength(&sOut));` |
-|       1 |  968 | `		}` |
-|       7 |  969 | `		SyBlobReset(&sOut);` |
-|       7 |  970 | `		SyBlobAppend(&sOut,SyBlobData(&sThis),SyBlobLength(&sThis));` |
-|       7 |  971 | `		SyBlobRelease(&sMsg);` |
-|       7 |  972 | `		SyBlobRelease(&sThis);` |
-|       4 |  973 | `	}` |
-|       5 |  974 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|       5 |  975 | `	SyBlobRelease(&sOut);` |
-|       5 |  976 | `	return PH7_OK;` |
-|       1 |  977 | `}` |
-|       - |  978 | `/*` |
-|       - |  979 | ` * The declaration. php's two roots carry the same eleven methods and the same` |
-|       - |  980 | `` * seven slots; the only difference php's stub records is `Error::$line`, which`` |
-|       - |  981 | ` * has NO default where Exception's is 0.` |
-|       - |  982 | ` *` |
-|       - |  983 | `` * PH7_CLASS_NOCLONE on EVERY row: php refuses `clone $e` outright, and a native`` |
-|       - |  984 | ` * subclass does not inherit its parent's class flags (rule 29).` |
-|       - |  985 | ` */` |
-|       - |  986 | `#define EXC_METHODS(zCtor,xCtor) \` |
-|       - |  987 | `	{ "__clone",          PH7_MOD_PRIVATE, "", "void", vm_builtin_Exception_clone }, \` |
-|       - |  988 | `	{ "__construct",      PH7_MOD_PUBLIC, zCtor, 0, xCtor }, \` |
-|       - |  989 | `	{ "__wakeup",         PH7_MOD_PUBLIC, "", "@void", vm_builtin_Exception_wakeup }, \` |
-|       - |  990 | `	{ "getMessage",       PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "string", \` |
-|       - |  991 | `	  vm_builtin_Exception_getMessage }, \` |
-|       - |  992 | `	{ "getCode",          PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", 0, \` |
-|       - |  993 | `	  vm_builtin_Exception_getCode }, \` |
-|       - |  994 | `	{ "getFile",          PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "string", \` |
-|       - |  995 | `	  vm_builtin_Exception_getFile }, \` |
-|       - |  996 | `	{ "getLine",          PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "int", \` |
-|       - |  997 | `	  vm_builtin_Exception_getLine }, \` |
-|       - |  998 | `	{ "getTrace",         PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "array", \` |
-|       - |  999 | `	  vm_builtin_Exception_getTrace }, \` |
-|       - | 1000 | `	{ "getPrevious",      PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "?Throwable", \` |
-|       - | 1001 | `	  vm_builtin_Exception_getPrevious }, \` |
-|       - | 1002 | `	{ "getTraceAsString", PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "string", \` |
-|       - | 1003 | `	  vm_builtin_Exception_getTraceAsString }, \` |
-|       - | 1004 | `	{ "__toString",       PH7_MOD_PUBLIC, "", "string", vm_builtin_Exception_toString }` |
-|       - | 1005 | `#define EXC_CTOR_SIG "string $message = \"\", int $code = 0, ?Throwable $previous = null"` |
-|       - | 1006 | `/* php's seven slots, twice: the only difference between the two roots is` |
-|       - | 1007 | `` * `Error::$line`, which php's stub declares with NO default where Exception's is`` |
-|       - | 1008 | `` * 0 (`PH7_NATIVE_VAL_NONE` — its hasDefaultValue() is false and the export`` |
-|       - | 1009 | `` * prints `protected int $line` bare). `message` and `code` are the two php leaves`` |
-|       - | 1010 | ` * UNTYPED, and its stub says why: BC, since a subclass may have assigned` |
-|       - | 1011 | ` * anything to them. */` |
-|       - | 1012 | `#define EXC_PROP_HEAD \` |
-|       - | 1013 | `	{ EXC_MESSAGE,  PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 }, \` |
-|       - | 1014 | `	{ EXC_STRING,   PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" }, \` |
-|       - | 1015 | `	{ EXC_CODE,     PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 }, \` |
-|       - | 1016 | `	{ EXC_FILE,     PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" }` |
-|       - | 1017 | `#define EXC_PROP_TAIL \` |
-|       - | 1018 | `	{ EXC_TRACE,    PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_ARRAY, 0, 0, 0.0 }, "array" }, \` |
-|       - | 1019 | `	{ EXC_PREVIOUS, PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?Throwable" }` |
-|    7925 | 1020 | `static sxi32 VmInstallExceptions(ph7_vm *pVm)` |
-|       5 | 1021 | `{` |
-|       - | 1022 | `	static const PH7_NativeMethodDef aExcMethod[] = {` |
-|       - | 1023 | `		EXC_METHODS(EXC_CTOR_SIG,vm_builtin_Exception_construct)` |
-|       - | 1024 | `	};` |
-|       - | 1025 | `	static const PH7_NativePropDef aExcProp[] = {` |
-|       - | 1026 | `		EXC_PROP_HEAD,` |
-|       - | 1027 | `		{ EXC_LINE, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, "int" },` |
-|       - | 1028 | `		EXC_PROP_TAIL` |
-|       - | 1029 | `	};` |
-|       - | 1030 | `	static const PH7_NativePropDef aErrProp[] = {` |
-|       - | 1031 | `		EXC_PROP_HEAD,` |
-|       - | 1032 | `		{ EXC_LINE, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },` |
-|       - | 1033 | `		EXC_PROP_TAIL` |
-|       - | 1034 | `	};` |
-|       - | 1035 | `	static const PH7_NativePropDef aErrExcProp[] = {` |
-|       - | 1036 | `		{ EXC_SEVERITY, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 1, 0, 0.0 }, "int" },` |
-|       - | 1037 | `	};` |
-|       - | 1038 | `	static const PH7_NativeMethodDef aErrExcMethod[] = {` |
-|       - | 1039 | `		{ "__construct", PH7_MOD_PUBLIC,` |
-|       - | 1040 | `		  "string $message = \"\", int $code = 0, int $severity = E_ERROR, "` |
-|       - | 1041 | `		  "?string $filename = null, ?int $line = null, ?Throwable $previous = null", 0,` |
-|       - | 1042 | `		  vm_builtin_ErrorException_construct },` |
-|       - | 1043 | `		{ "getSeverity", PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "int",` |
-|       - | 1044 | `		  vm_builtin_ErrorException_getSeverity },` |
-|       - | 1045 | `	};` |
-|       - | 1046 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|       - | 1047 | `		{ "Exception", 0, "Throwable", PH7_CLASS_NOCLONE,` |
-|       - | 1048 | `		  aExcMethod, SX_ARRAYSIZE(aExcMethod), 0, 0, aExcProp, SX_ARRAYSIZE(aExcProp), 0, 0, 0 },` |
-|       - | 1049 | `		{ "Error", 0, "Throwable", PH7_CLASS_NOCLONE,` |
-|       - | 1050 | `		  aExcMethod, SX_ARRAYSIZE(aExcMethod), 0, 0, aErrProp, SX_ARRAYSIZE(aErrProp), 0, 0, 0 },` |
-|       - | 1051 | `		/* Zend's own subclasses, then ErrorException, then SPL's tree. Every row is` |
-|       - | 1052 | `		 * declaration-only in php too. */` |
-|       - | 1053 | `		{ "TypeError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1054 | `		{ "ArgumentCountError", "TypeError", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1055 | `		{ "ValueError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1056 | `		{ "FiberError", "Error", 0,` |
-|       - | 1057 | `		  PH7_CLASS_FINAL\|PH7_CLASS_NOINSTANTIATE\|PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1058 | `		{ "AssertionError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1059 | `		{ "ArithmeticError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1060 | `		{ "DivisionByZeroError", "ArithmeticError", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1061 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1062 | `		{ "UnhandledMatchError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1063 | `		{ "CompileError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1064 | `		{ "ParseError", "CompileError", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1065 | `		{ "ErrorException", "Exception", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1066 | `		  aErrExcMethod, SX_ARRAYSIZE(aErrExcMethod), 0, 0,` |
-|       - | 1067 | `		  aErrExcProp, SX_ARRAYSIZE(aErrExcProp), 0, 0, 0 },` |
-|       - | 1068 | `		{ "LogicException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1069 | `		{ "RuntimeException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1070 | `		{ "BadFunctionCallException", "LogicException", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1071 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1072 | `		{ "BadMethodCallException", "BadFunctionCallException", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1073 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1074 | `		{ "DomainException", "LogicException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1075 | `		{ "InvalidArgumentException", "LogicException", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1076 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1077 | `		{ "LengthException", "LogicException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1078 | `		{ "OutOfRangeException", "LogicException", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1079 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1080 | `		{ "OutOfBoundsException", "RuntimeException", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1081 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1082 | `		{ "OverflowException", "RuntimeException", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1083 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1084 | `		{ "RangeException", "RuntimeException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1085 | `		{ "UnderflowException", "RuntimeException", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1086 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1087 | `		{ "UnexpectedValueException", "RuntimeException", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1088 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1089 | `		{ "JsonException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1090 | `	};` |
-|       - | 1091 | `	{` |
-|    7930 | 1092 | `		sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|    7930 | 1093 | `		if( rc == SXRET_OK ){` |
-|       - | 1094 | ``			/* php refuses `new FiberError` -- the engine is the only thing that`` |
-|       - | 1095 | `			 * raises one -- and words the refusal per class. */` |
-|    7930 | 1096 | `			ph7_class *pFe = PH7_VmExtractClass(&(*pVm),"FiberError",` |
-|       - | 1097 | `				sizeof("FiberError")-1,FALSE,0);` |
-|    7930 | 1098 | `			if( pFe ){` |
-|    7930 | 1099 | `				pFe->zNewRefusal = "The \"FiberError\" class is reserved for internal use "` |
-|       - | 1100 | `					"and cannot be manually instantiated";` |
-|    3957 | 1101 | `			}` |
-|    3957 | 1102 | `		}` |
-|    7930 | 1103 | `		return rc;` |
-|       - | 1104 | `	}` |
-|       5 | 1105 | `}` |
-|       - | 1106 | `/*` |
-|       - | 1107 | ` * The eleven core interfaces, declared from C.` |
-|       - | 1108 | ` *` |
-|       - | 1109 | ` * They are contracts -- no method here has a body, every row is` |
-|       - | 1110 | ` * PH7_MOD_ABSTRACT -- so the conversion is entirely about what the DECLARATION` |
-|       - | 1111 | ` * says, which is where a chunk fell short in four php-visible ways:` |
-|       - | 1112 | ` *` |
-|       - | 1113 | `` *  - php's `interface Throwable extends Stringable`: the chunk redeclared`` |
-|       - | 1114 | ` *    __toString() on Throwable instead, so no Exception was ever Stringable` |
-|       - | 1115 | `` *    (`$e instanceof Stringable` was false, and Reflection attributed the`` |
-|       - | 1116 | `` *    method to Throwable rather than printing php's `inherits Stringable`);`` |
-|       - | 1117 | ` *  - php declares a RETURN TYPE on all but three of these methods and marks` |
-|       - | 1118 | `` *    nearly all of them TENTATIVE (the leading `@`, rule 45) -- a chunk has no`` |
-|       - | 1119 | ` *    way to say tentative at all;` |
-|       - | 1120 | `` *  - php's `mixed` on ArrayAccess's offsets, which the chunk left untyped;`` |
-|       - | 1121 | ` *  - method ORDER, which Reflection prints: php lists Throwable's getPrevious` |
-|       - | 1122 | ` *    before getTraceAsString, and Iterator's as current/next/key/valid/rewind.` |
-|       - | 1123 | ` *` |
-|       - | 1124 | ` * Order within the table is php's stub order too; the declare-then-link phases` |
-|       - | 1125 | ` * of PH7_InstallNativeClasses let Throwable name Stringable and Iterator name` |
-|       - | 1126 | `` * Traversable regardless of row order. An interface's parent is `zParent`, not`` |
-|       - | 1127 | `` * `zImplements` (Reflection walks pBase to attribute an inherited method).`` |
-|       - | 1128 | ` */` |
-|    7925 | 1129 | `static sxi32 VmInstallCoreInterfaces(ph7_vm *pVm)` |
-|       5 | 1130 | `{` |
-|       - | 1131 | `	static const PH7_NativeMethodDef aStringable[] = {` |
-|       - | 1132 | `		{ "__toString", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
-|       - | 1133 | `	};` |
-|       - | 1134 | `	static const PH7_NativeMethodDef aThrowable[] = {` |
-|       - | 1135 | `		/* Not one of these is tentative: php's Throwable is a real contract. */` |
-|       - | 1136 | `		{ "getMessage",       PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
-|       - | 1137 | `		{ "getCode",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", 0, 0 },` |
-|       - | 1138 | `		{ "getFile",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
-|       - | 1139 | `		{ "getLine",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "int", 0 },` |
-|       - | 1140 | `		{ "getTrace",         PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "array", 0 },` |
-|       - | 1141 | `		{ "getPrevious",      PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "?Throwable", 0 },` |
-|       - | 1142 | `		{ "getTraceAsString", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
-|       - | 1143 | `	};` |
-|       - | 1144 | `	static const PH7_NativeMethodDef aArrayAccess[] = {` |
-|       - | 1145 | `		{ "offsetExists", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "mixed $offset", "@bool", 0 },` |
-|       - | 1146 | `		{ "offsetGet",    PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "mixed $offset", "@mixed", 0 },` |
-|       - | 1147 | `		{ "offsetSet",    PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "mixed $offset, mixed $value",` |
-|       - | 1148 | `		  "@void", 0 },` |
-|       - | 1149 | `		{ "offsetUnset",  PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "mixed $offset", "@void", 0 },` |
-|       - | 1150 | `	};` |
-|       - | 1151 | `	static const PH7_NativeMethodDef aCountable[] = {` |
-|       - | 1152 | `		{ "count", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@int", 0 },` |
-|       - | 1153 | `	};` |
-|       - | 1154 | `	static const PH7_NativeMethodDef aJsonSerializable[] = {` |
-|       - | 1155 | `		{ "jsonSerialize", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@mixed", 0 },` |
-|       - | 1156 | `	};` |
-|       - | 1157 | `	/* The concrete cases()/from()/tryFrom() an enum gets are native methods` |
-|       - | 1158 | `	 * declared to match these (oo_native.c, PH7_InstallEnumInterfaceMethods). */` |
-|       - | 1159 | `	static const PH7_NativeMethodDef aUnitEnum[] = {` |
-|       - | 1160 | `		{ "cases", PH7_MOD_PUBLIC\|PH7_MOD_STATIC\|PH7_MOD_ABSTRACT, "", "array", 0 },` |
-|       - | 1161 | `	};` |
-|       - | 1162 | `	static const PH7_NativeMethodDef aBackedEnum[] = {` |
-|       - | 1163 | `		{ "from",    PH7_MOD_PUBLIC\|PH7_MOD_STATIC\|PH7_MOD_ABSTRACT, "string\|int $value",` |
-|       - | 1164 | `		  "static", 0 },` |
-|       - | 1165 | `		{ "tryFrom", PH7_MOD_PUBLIC\|PH7_MOD_STATIC\|PH7_MOD_ABSTRACT, "string\|int $value",` |
-|       - | 1166 | `		  "?static", 0 },` |
-|       - | 1167 | `	};` |
-|       - | 1168 | `	static const PH7_NativeMethodDef aIterator[] = {` |
-|       - | 1169 | `		{ "current", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@mixed", 0 },` |
-|       - | 1170 | `		{ "next",    PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@void", 0 },` |
-|       - | 1171 | `		{ "key",     PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@mixed", 0 },` |
-|       - | 1172 | `		{ "valid",   PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@bool", 0 },` |
-|       - | 1173 | `		{ "rewind",  PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@void", 0 },` |
-|       - | 1174 | `	};` |
-|       - | 1175 | `	static const PH7_NativeMethodDef aIteratorAggregate[] = {` |
-|       - | 1176 | `		{ "getIterator", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@Traversable", 0 },` |
-|       - | 1177 | `	};` |
-|       - | 1178 | `	/* php's legacy Serializable declares NO return type on either method. */` |
-|       - | 1179 | `	static const PH7_NativeMethodDef aSerializable[] = {` |
-|       - | 1180 | `		{ "serialize",   PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", 0, 0 },` |
-|       - | 1181 | `		{ "unserialize", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "string $data", 0, 0 },` |
-|       - | 1182 | `	};` |
-|       - | 1183 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|       - | 1184 | `		{ "Traversable", 0, 0, PH7_CLASS_INTERFACE,` |
-|       - | 1185 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1186 | `		{ "Stringable", 0, 0, PH7_CLASS_INTERFACE,` |
-|       - | 1187 | `		  aStringable, SX_ARRAYSIZE(aStringable), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1188 | `		{ "Throwable", "Stringable", 0, PH7_CLASS_INTERFACE,` |
-|       - | 1189 | `		  aThrowable, SX_ARRAYSIZE(aThrowable), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1190 | `		{ "ArrayAccess", 0, 0, PH7_CLASS_INTERFACE,` |
-|       - | 1191 | `		  aArrayAccess, SX_ARRAYSIZE(aArrayAccess), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1192 | `		{ "Countable", 0, 0, PH7_CLASS_INTERFACE,` |
-|       - | 1193 | `		  aCountable, SX_ARRAYSIZE(aCountable), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1194 | `		{ "JsonSerializable", 0, 0, PH7_CLASS_INTERFACE,` |
-|       - | 1195 | `		  aJsonSerializable, SX_ARRAYSIZE(aJsonSerializable), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1196 | `		{ "UnitEnum", 0, 0, PH7_CLASS_INTERFACE,` |
-|       - | 1197 | `		  aUnitEnum, SX_ARRAYSIZE(aUnitEnum), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1198 | `		{ "BackedEnum", "UnitEnum", 0, PH7_CLASS_INTERFACE,` |
-|       - | 1199 | `		  aBackedEnum, SX_ARRAYSIZE(aBackedEnum), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1200 | `		{ "Iterator", "Traversable", 0, PH7_CLASS_INTERFACE,` |
-|       - | 1201 | `		  aIterator, SX_ARRAYSIZE(aIterator), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1202 | `		{ "IteratorAggregate", "Traversable", 0, PH7_CLASS_INTERFACE,` |
-|       - | 1203 | `		  aIteratorAggregate, SX_ARRAYSIZE(aIteratorAggregate), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1204 | `		{ "Serializable", 0, 0, PH7_CLASS_INTERFACE,` |
-|       - | 1205 | `		  aSerializable, SX_ARRAYSIZE(aSerializable), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1206 | `	};` |
-|    7930 | 1207 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|       5 | 1208 | `}` |
-|       - | 1209 | `/*` |
-|       - | 1210 | ` * ---------------------------------------------------------------------------` |
-|       - | 1211 | `` * php's Directory — the object `dir()` answers.`` |
-|       - | 1212 | ` *` |
-|       - | 1213 | ` * php declares it FINAL with **no constructor at all**: the class is created by` |
-|       - | 1214 | `` * `dir()` and `new Directory` is refused in the create_object handler, with a`` |
-|       - | 1215 | ` * sentence that names dir() as the way to get one. Its two slots are` |
-|       - | 1216 | `` * `public protected(set) readonly`, so a script can read `$d->path` and never`` |
-|       - | 1217 | `` * write it, and its three methods declare return types (`read(): string\|false`).`` |
-|       - | 1218 | ` * The chunk had a public constructor, a __destruct php does not declare, no` |
-|       - | 1219 | ` * types anywhere and writable slots.` |
-|       - | 1220 | ` * ---------------------------------------------------------------------------` |
-|       - | 1221 | ` */` |
-|       - | 1222 | `#define DIR_HANDLE "handle"` |
-|       - | 1223 | `#define DIR_PATH   "path"` |
-|       - | 1224 | `/*` |
-|       - | 1225 | ` * Forward one method to the engine's own directory builtin (rule 7: call, don't` |
-|       - | 1226 | `` * reimplement). php's Directory methods are `php_stream_readdir(...)` on the very`` |
-|       - | 1227 | `` * stream `readdir()` uses, and a CLOSED handle is a TypeError there — the one`` |
-|       - | 1228 | ` * place php's wording names the class rather than the function.` |
-|       - | 1229 | ` */` |
-|      40 | 1230 | `static int VmDirClosed(ph7_value *pHandle)` |
-|       2 | 1231 | `{` |
-|      42 | 1232 | `	io_private *pDev = (io_private *)pHandle->x.pOther;` |
-|      42 | 1233 | `	return IO_PRIVATE_INVALID(pDev);` |
-|       2 | 1234 | `}` |
-|      40 | 1235 | `static int VmDirForward(ph7_context *pCtx,const char *zFunc,const char *zMethod)` |
-|       2 | 1236 | `{` |
-|      42 | 1237 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|      42 | 1238 | `	ph7_value *pHandle = pThis ? PH7_NativeAttr(pThis,DIR_HANDLE) : 0;` |
-|       - | 1239 | `	ph7_value *apArg[1];` |
-|       - | 1240 | `	ph7_value sResult;` |
-|       - | 1241 | `	ph7_value sName;` |
-|       - | 1242 | `	SyString sStr;` |
-|       - | 1243 | `	sxi32 rc;` |
-|       - | 1244 | ``	/* php's check is `php_stream_from_zval` on a stream it CLOSED: closedir()`` |
-|       - | 1245 | `	 * keeps the resource alive and marks it (gettype() answers` |
-|       - | 1246 | `	 * "resource (closed)"), so the test is the magic, not the type. */` |
-|      40 | 1247 | `	if( pHandle == 0 \|\| (pHandle->iFlags & MEMOBJ_RES) == 0` |
-|      42 | 1248 | `	 \|\| VmDirClosed(pHandle) ){` |
-|      10 | 1249 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|       - | 1250 | `			"Directory::%s(): cannot use Directory resource after it has been closed",` |
-|       3 | 1251 | `			zMethod);` |
-|       - | 1252 | `	}` |
-|      36 | 1253 | `	SyStringInitFromBuf(&sStr,zFunc,SyStrlen(zFunc));` |
-|      36 | 1254 | `	PH7_MemObjInit(pCtx->pVm,&sName);` |
-|      36 | 1255 | `	PH7_MemObjInitFromString(pCtx->pVm,&sName,&sStr);` |
-|      36 | 1256 | `	PH7_MemObjInit(pCtx->pVm,&sResult);` |
-|      36 | 1257 | `	apArg[0] = pHandle;` |
-|      36 | 1258 | `	rc = PH7_VmCallUserFunction(pCtx->pVm,&sName,1,apArg,&sResult);` |
-|      36 | 1259 | `	PH7_MemObjRelease(&sName);` |
-|      36 | 1260 | `	if( rc == SXRET_OK ){` |
-|      36 | 1261 | `		ph7_result_value(pCtx,&sResult);` |
-|      17 | 1262 | `	}` |
-|      36 | 1263 | `	PH7_MemObjRelease(&sResult);` |
-|      36 | 1264 | `	return PH7_OK;` |
-|      22 | 1265 | `}` |
-|      28 | 1266 | `static int vm_builtin_Directory_read(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       2 | 1267 | `{` |
-|      14 | 1268 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|      30 | 1269 | `	return VmDirForward(pCtx,"readdir","read");` |
-|       2 | 1270 | `}` |
-|       4 | 1271 | `static int vm_builtin_Directory_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1272 | `{` |
-|       2 | 1273 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|       5 | 1274 | `	return VmDirForward(pCtx,"rewinddir","rewind");` |
-|       1 | 1275 | `}` |
-|       8 | 1276 | `static int vm_builtin_Directory_close(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       2 | 1277 | `{` |
-|       4 | 1278 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|      10 | 1279 | `	return VmDirForward(pCtx,"closedir","close");` |
-|       2 | 1280 | `}` |
-|    7925 | 1281 | `static sxi32 VmInstallDirectory(ph7_vm *pVm)` |
-|       5 | 1282 | `{` |
-|       - | 1283 | `	static const PH7_NativePropDef aDirProp[] = {` |
-|       - | 1284 | `		{ DIR_PATH,   PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
-|       - | 1285 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },` |
-|       - | 1286 | `		{ DIR_HANDLE, PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
-|       - | 1287 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "mixed" },` |
-|       - | 1288 | `	};` |
-|       - | 1289 | `	static const PH7_NativeMethodDef aDirMethod[] = {` |
-|       - | 1290 | `		{ "close",  PH7_MOD_PUBLIC, "", "void", vm_builtin_Directory_close },` |
-|       - | 1291 | `		{ "rewind", PH7_MOD_PUBLIC, "", "void", vm_builtin_Directory_rewind },` |
-|       - | 1292 | `		{ "read",   PH7_MOD_PUBLIC, "", "string\|false", vm_builtin_Directory_read },` |
-|       - | 1293 | `	};` |
-|       - | 1294 | `	static const PH7_NativeClassSpec sSpec = {` |
-|       - | 1295 | `		"Directory", 0, 0, PH7_CLASS_FINAL\|PH7_CLASS_NOINSTANTIATE,` |
-|       - | 1296 | `		aDirMethod, SX_ARRAYSIZE(aDirMethod), 0, 0,` |
-|       - | 1297 | `		aDirProp, SX_ARRAYSIZE(aDirProp), 0, 0, 0` |
-|       - | 1298 | `	};` |
-|    7930 | 1299 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
-|    7930 | 1300 | `	if( rc == SXRET_OK ){` |
-|    7930 | 1301 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Directory",sizeof("Directory")-1,FALSE,0);` |
-|    7930 | 1302 | `		if( pClass ){` |
-|       - | 1303 | `			/* php words this refusal per class rather than with the generic` |
-|       - | 1304 | `			 * "Instantiation of class %s is not allowed". */` |
-|    7930 | 1305 | `			pClass->zNewRefusal = "Cannot directly construct Directory, use dir() instead";` |
-|    3957 | 1306 | `		}` |
-|    3957 | 1307 | `	}` |
-|    7930 | 1308 | `	return rc;` |
-|       5 | 1309 | `}` |
-|       - | 1310 | `/*` |
-|       - | 1311 | ` * ---------------------------------------------------------------------------` |
-|       - | 1312 | ` * php's attribute classes.` |
-|       - | 1313 | ` *` |
-|       - | 1314 | ``  * Each carries an ATTRIBUTE of its own — `#[Attribute(Attribute::TARGET_CLASS)]` `` |
-|       - | 1315 | ` * on Attribute, a target mask on every other one — and those records are` |
-|       - | 1316 | ` * load-bearing rather than decorative: the engine reads them to decide whether a` |
-|       - | 1317 | `` * user's `#[Deprecated]` may sit where it does, and ReflectionAttribute answers`` |
-|       - | 1318 | ` * them. A compiled attribute holds its argument as byte-code, so this is what` |
-|       - | 1319 | `` * `PH7_NativeClassAddAttribute()` exists for (rule 11's next unused corner,`` |
-|       - | 1320 | ` * exercised here): the argument rides as a literal.` |
-|       - | 1321 | ` *` |
-|       - | 1322 | ` * php's Deprecated mask is 87 — TARGET_CLASS\|FUNCTION\|METHOD\|CLASS_CONSTANT\|` |
-|       - | 1323 | ` * CONSTANT — where the chunk wrote 86 and left the CLASS bit out.` |
-|       - | 1324 | ` *` |
-|       - | 1325 | ` * Three of them declare NOTHING but their own mask, because what they mean is a` |
-|       - | 1326 | `` * question something else asks: `#[AllowDynamicProperties]` is read by the`` |
-|       - | 1327 | `` * dynamic-property decision at the write site, `#[SensitiveParameter]` by the`` |
-|       - | 1328 | `` * backtrace builder, `#[ReturnTypeWillChange]` by php's tentative-return-type`` |
-|       - | 1329 | ` * check (which the scope policy non-deprecated policy removed, so nothing consults it` |
-|       - | 1330 | ` * here). They still have to EXIST: a program that spells one and then asks` |
-|       - | 1331 | `` * `getAttributes()[0]->newInstance()` gets php's object, not`` |
-|       - | 1332 | `` * `Attribute class "AllowDynamicProperties" not found`.`` |
-|       - | 1333 | ` *` |
-|       - | 1334 | `` * `SensitiveParameterValue` is not an attribute at all — it is the box php puts`` |
-|       - | 1335 | ` * a redacted argument in — but it belongs to the same feature and to the same` |
-|       - | 1336 | ` * declaration site.` |
-|       - | 1337 | ` * ---------------------------------------------------------------------------` |
-|       - | 1338 | ` */` |
-|       - | 1339 | ``/* php declares `public function __construct()` on the three marker attributes, so`` |
-|       - | 1340 | `` * Reflection reports one and `new AllowDynamicProperties(1)` is an`` |
-|       - | 1341 | ` * ArgumentCountError. The body has nothing to do: the object carries no state. */` |
-|      10 | 1342 | `static int vm_builtin_AttrMarker_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       2 | 1343 | `{` |
-|       5 | 1344 | `	SXUNUSED(pCtx);` |
-|       5 | 1345 | `	SXUNUSED(nArg);` |
-|       5 | 1346 | `	SXUNUSED(apArg);` |
-|      12 | 1347 | `	return PH7_OK;` |
-|       2 | 1348 | `}` |
-|       - | 1349 | `/* SensitiveParameterValue::__construct(mixed $value) / getValue() / __debugInfo() */` |
-|       - | 1350 | `#define SPV_SLOT "value"` |
-|      20 | 1351 | `static int vm_builtin_SensitiveParameterValue_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1352 | `{` |
-|      21 | 1353 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|      21 | 1354 | `	if( pThis && nArg > 0 ){` |
-|      21 | 1355 | `		PH7_NativeSetProp(pCtx->pVm,pThis,SPV_SLOT,sizeof(SPV_SLOT)-1,apArg[0]);` |
-|      10 | 1356 | `	}` |
-|      21 | 1357 | `	return PH7_OK;` |
-|       1 | 1358 | `}` |
-|       6 | 1359 | `static int vm_builtin_SensitiveParameterValue_getValue(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1360 | `{` |
-|       7 | 1361 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|       7 | 1362 | `	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,SPV_SLOT) : 0;` |
-|       3 | 1363 | `	SXUNUSED(nArg);` |
-|       3 | 1364 | `	SXUNUSED(apArg);` |
-|       7 | 1365 | `	if( pVal ){` |
-|       7 | 1366 | `		ph7_result_value(pCtx,pVal);` |
-|       4 | 1367 | `	}else{` |
-|     ! 0 | 1368 | `		ph7_result_null(pCtx);` |
-|       - | 1369 | `	}` |
-|       7 | 1370 | `	return PH7_OK;` |
-|       1 | 1371 | `}` |
-|       2 | 1372 | `static int vm_builtin_SensitiveParameterValue_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1373 | `{` |
-|       3 | 1374 | `	ph7_value *pOut = ph7_context_new_array(pCtx);` |
-|       1 | 1375 | `	SXUNUSED(nArg);` |
-|       1 | 1376 | `	SXUNUSED(apArg);` |
-|       3 | 1377 | `	if( pOut == 0 ){` |
-|     ! 0 | 1378 | `		return PH7_ContextMemoryError(pCtx);` |
-|       - | 1379 | `	}` |
-|       3 | 1380 | `	ph7_result_value(pCtx,pOut);` |
-|       3 | 1381 | `	return PH7_OK;` |
-|       2 | 1382 | `}` |
-|       - | 1383 | `/*` |
-|       - | 1384 | `` * php gives the class a `get_properties_for` handler that answers NULL for every`` |
-|       - | 1385 | `` * purpose, so the box shows nothing to var_export, the `(array)` cast or`` |
-|       - | 1386 | `` * json_encode either — not just to var_dump's `__debugInfo()`. The point of the`` |
-|       - | 1387 | ` * class is that the value it holds does not leak onto a display surface.` |
-|       - | 1388 | ` */` |
-|       6 | 1389 | `static sxi32 VmPresentSensitiveParameterValue(ph7_vm *pVm,ph7_class_instance *pThis,` |
-|       - | 1390 | `	ph7_value *pOut,int bDebug)` |
-|       1 | 1391 | `{` |
-|       3 | 1392 | `	SXUNUSED(pVm);` |
-|       3 | 1393 | `	SXUNUSED(pThis);` |
-|       3 | 1394 | `	SXUNUSED(pOut);` |
-|       3 | 1395 | `	SXUNUSED(bDebug);` |
-|       7 | 1396 | `	return SXRET_OK;   /* the empty shape, both handlers */` |
-|       1 | 1397 | `}` |
-|       8 | 1398 | `static int vm_builtin_Attribute_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1399 | `{` |
-|       9 | 1400 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|       9 | 1401 | `	if( pThis ){` |
-|      16 | 1402 | `		PH7_NativeSetAttrInt(pCtx->pVm,pThis,"flags",` |
-|       7 | 1403 | `			nArg > 0 ? ph7_value_to_int64(apArg[0]) : 127);` |
-|       4 | 1404 | `	}` |
-|       9 | 1405 | `	return PH7_OK;` |
-|       1 | 1406 | `}` |
-|       - | 1407 | `/* NoDiscard::__construct(?string $message = null) */` |
-|       2 | 1408 | `static int vm_builtin_NoDiscard_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1409 | `{` |
-|       3 | 1410 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|       - | 1411 | `	ph7_value sVal;` |
-|       3 | 1412 | `	if( pThis == 0 ){` |
-|     ! 0 | 1413 | `		return PH7_OK;` |
-|       - | 1414 | `	}` |
-|       3 | 1415 | `	PH7_MemObjInit(pCtx->pVm,&sVal);` |
-|       3 | 1416 | `	if( nArg > 0 ){` |
-|     ! 0 | 1417 | `		PH7_MemObjStore(apArg[0],&sVal);` |
-|     ! 0 | 1418 | `	}` |
-|       3 | 1419 | `	PH7_NativeSetProp(pCtx->pVm,pThis,"message",sizeof("message")-1,&sVal);` |
-|       3 | 1420 | `	PH7_MemObjRelease(&sVal);` |
-|       3 | 1421 | `	return PH7_OK;` |
-|       2 | 1422 | `}` |
-|      10 | 1423 | `static int vm_builtin_Deprecated_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1424 | `{` |
-|      11 | 1425 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|       - | 1426 | `	static const char *const azSlot[] = { "message", "since" };` |
-|       - | 1427 | `	int n;` |
-|      11 | 1428 | `	if( pThis == 0 ){` |
-|     ! 0 | 1429 | `		return PH7_OK;` |
-|       - | 1430 | `	}` |
-|      31 | 1431 | `	for( n = 0 ; n < 2 ; n++ ){` |
-|       - | 1432 | `		ph7_value sVal;` |
-|      21 | 1433 | `		PH7_MemObjInit(pCtx->pVm,&sVal);` |
-|      21 | 1434 | `		if( n < nArg ){` |
-|      15 | 1435 | `			PH7_MemObjStore(apArg[n],&sVal);` |
-|       7 | 1436 | `		}` |
-|      21 | 1437 | `		PH7_NativeSetProp(pCtx->pVm,pThis,azSlot[n],SyStrlen(azSlot[n]),&sVal);` |
-|      21 | 1438 | `		PH7_MemObjRelease(&sVal);` |
-|      11 | 1439 | `	}` |
-|      11 | 1440 | `	return PH7_OK;` |
-|       6 | 1441 | `}` |
-|    7925 | 1442 | `static sxi32 VmInstallAttributes(ph7_vm *pVm)` |
-|       5 | 1443 | `{` |
-|       - | 1444 | `	static const PH7_NativeConstDef aAttrConst[] = {` |
-|       - | 1445 | `		{ "TARGET_CLASS",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },` |
-|       - | 1446 | `		{ "TARGET_FUNCTION",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },` |
-|       - | 1447 | `		{ "TARGET_METHOD",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 4, 0, 0.0 },` |
-|       - | 1448 | `		{ "TARGET_PROPERTY",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 8, 0, 0.0 },` |
-|       - | 1449 | `		{ "TARGET_CLASS_CONSTANT", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16, 0, 0.0 },` |
-|       - | 1450 | `		{ "TARGET_PARAMETER",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 32, 0, 0.0 },` |
-|       - | 1451 | `		{ "TARGET_CONSTANT",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 64, 0, 0.0 },` |
-|       - | 1452 | `		{ "TARGET_ALL",            PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 127, 0, 0.0 },` |
-|       - | 1453 | `		{ "IS_REPEATABLE",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 128, 0, 0.0 },` |
-|       - | 1454 | `	};` |
-|       - | 1455 | ``	/* php declares `public int $flags;` — typed, NO default (the constructor is`` |
-|       - | 1456 | ``	 * the only writer), which is what the chunk's `public $flags;` could not say. */`` |
-|       - | 1457 | `	static const PH7_NativePropDef aAttrProp[] = {` |
-|       - | 1458 | `		{ "flags", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },` |
-|       - | 1459 | `	};` |
-|       - | 1460 | `	static const PH7_NativeMethodDef aAttrMethod[] = {` |
-|       - | 1461 | `		{ "__construct", PH7_MOD_PUBLIC, "int $flags = Attribute::TARGET_ALL", 0,` |
-|       - | 1462 | `		  vm_builtin_Attribute_construct },` |
-|       - | 1463 | `	};` |
-|       - | 1464 | `	static const PH7_NativePropDef aDepProp[] = {` |
-|       - | 1465 | `		{ "message", PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
-|       - | 1466 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },` |
-|       - | 1467 | `		{ "since",   PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
-|       - | 1468 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },` |
-|       - | 1469 | `	};` |
-|       - | 1470 | `	static const PH7_NativeMethodDef aDepMethod[] = {` |
-|       - | 1471 | `		{ "__construct", PH7_MOD_PUBLIC, "?string $message = null, ?string $since = null", 0,` |
-|       - | 1472 | `		  vm_builtin_Deprecated_construct },` |
-|       - | 1473 | `	};` |
-|       - | 1474 | ``	/* NoDiscard is Deprecated's shape minus the `since`. */`` |
-|       - | 1475 | `	static const PH7_NativePropDef aNdProp[] = {` |
-|       - | 1476 | `		{ "message", PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
-|       - | 1477 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },` |
-|       - | 1478 | `	};` |
-|       - | 1479 | `	static const PH7_NativeMethodDef aNdMethod[] = {` |
-|       - | 1480 | `		{ "__construct", PH7_MOD_PUBLIC, "?string $message = null", 0,` |
-|       - | 1481 | `		  vm_builtin_NoDiscard_construct },` |
-|       - | 1482 | `	};` |
-|       - | 1483 | `	/* The three markers: one argless constructor each and no state at all. */` |
-|       - | 1484 | `	static const PH7_NativeMethodDef aMarkerMethod[] = {` |
-|       - | 1485 | `		{ "__construct", PH7_MOD_PUBLIC, "", 0, vm_builtin_AttrMarker_construct },` |
-|       - | 1486 | `	};` |
-|       - | 1487 | `	static const PH7_NativePropDef aSpvProp[] = {` |
-|       - | 1488 | `		{ SPV_SLOT, PH7_MOD_PRIVATE\|PH7_MOD_READONLY,` |
-|       - | 1489 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "mixed" },` |
-|       - | 1490 | `	};` |
-|       - | 1491 | `	static const PH7_NativeMethodDef aSpvMethod[] = {` |
-|       - | 1492 | `		{ "__construct", PH7_MOD_PUBLIC, "mixed $value", 0,` |
-|       - | 1493 | `		  vm_builtin_SensitiveParameterValue_construct },` |
-|       - | 1494 | `		{ "getValue",    PH7_MOD_PUBLIC, "", "mixed",` |
-|       - | 1495 | `		  vm_builtin_SensitiveParameterValue_getValue },` |
-|       - | 1496 | `		{ "__debugInfo", PH7_MOD_PUBLIC, "", "array",` |
-|       - | 1497 | `		  vm_builtin_SensitiveParameterValue_debugInfo },` |
-|       - | 1498 | `	};` |
-|       - | 1499 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|       - | 1500 | `		{ "Attribute", 0, 0, PH7_CLASS_FINAL,` |
-|       - | 1501 | `		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), aAttrConst, SX_ARRAYSIZE(aAttrConst),` |
-|       - | 1502 | `		  aAttrProp, SX_ARRAYSIZE(aAttrProp), 0, 0, 0 },` |
-|       - | 1503 | `		{ "Deprecated", 0, 0, PH7_CLASS_FINAL,` |
-|       - | 1504 | `		  aDepMethod, SX_ARRAYSIZE(aDepMethod), 0, 0,` |
-|       - | 1505 | `		  aDepProp, SX_ARRAYSIZE(aDepProp), 0, 0, 0 },` |
-|       - | 1506 | `		{ "AllowDynamicProperties", 0, 0, PH7_CLASS_FINAL,` |
-|       - | 1507 | `		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1508 | `		{ "SensitiveParameter", 0, 0, PH7_CLASS_FINAL,` |
-|       - | 1509 | `		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1510 | `		{ "ReturnTypeWillChange", 0, 0, PH7_CLASS_FINAL,` |
-|       - | 1511 | `		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1512 | `		{ "Override", 0, 0, PH7_CLASS_FINAL,` |
-|       - | 1513 | `		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1514 | `		{ "NoDiscard", 0, 0, PH7_CLASS_FINAL,` |
-|       - | 1515 | `		  aNdMethod, SX_ARRAYSIZE(aNdMethod), 0, 0,` |
-|       - | 1516 | `		  aNdProp, SX_ARRAYSIZE(aNdProp), 0, 0, 0 },` |
-|       - | 1517 | `		/* php 8.5's marker for an attribute whose TARGET is checked late. It is` |
-|       - | 1518 | `		 * the one attribute class php declares with no constructor at all --` |
-|       - | 1519 | `		 * every other marker here has the empty one -- so a script writes it` |
-|       - | 1520 | ``		 * bare and `newInstance()` builds it with nothing. */`` |
-|       - | 1521 | `		{ "DelayedTargetValidation", 0, 0, PH7_CLASS_FINAL,` |
-|       - | 1522 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1523 | `		/* php refuses BOTH directions for the box (ZEND_ACC_NOT_SERIALIZABLE), which` |
-|       - | 1524 | `		 * is the whole point: a redacted value must not reach a payload either. */` |
-|       - | 1525 | `		{ "SensitiveParameterValue", 0, 0, PH7_CLASS_FINAL\|PH7_CLASS_NOSERIALIZE,` |
-|       - | 1526 | `		  aSpvMethod, SX_ARRAYSIZE(aSpvMethod), 0, 0,` |
-|       - | 1527 | `		  aSpvProp, SX_ARRAYSIZE(aSpvProp), 0, 0,` |
-|       - | 1528 | `		  VmPresentSensitiveParameterValue },` |
-|       - | 1529 | `	};` |
-|       - | 1530 | ``	/* Each attribute class's own `#[Attribute(mask)]`, php's masks verbatim. The`` |
-|       - | 1531 | `	 * literal rows are STATIC because PH7_NativeClassAddAttribute keeps a pointer` |
-|       - | 1532 | `	 * to them for the VM's lifetime. */` |
-|       - | 1533 | `	static const PH7_NativeAttrArg aMaskClass[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 1,  0, 0.0 } } };` |
-|       - | 1534 | `	static const PH7_NativeAttrArg aMaskDep[]    = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 87, 0, 0.0 } } };` |
-|       - | 1535 | `	static const PH7_NativeAttrArg aMaskParam[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 32, 0, 0.0 } } };` |
-|       - | 1536 | `	static const PH7_NativeAttrArg aMaskMethod[] = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 4,  0, 0.0 } } };` |
-|       - | 1537 | `	static const PH7_NativeAttrArg aMaskMembr[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 12, 0, 0.0 } } };` |
-|       - | 1538 | `	static const PH7_NativeAttrArg aMaskCallee[] = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 6,  0, 0.0 } } };` |
-|       - | 1539 | `	static const PH7_NativeAttrArg aMaskAll[]    = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 127,0, 0.0 } } };` |
-|       - | 1540 | `	static const struct {` |
-|       - | 1541 | `		const char *zClass;` |
-|       - | 1542 | `		const PH7_NativeAttrArg *aArg;   /* php's TARGET_* mask for that class */` |
-|       - | 1543 | `	} aOwnAttr[] = {` |
-|       - | 1544 | `		{ "Attribute",              aMaskClass  },   /* TARGET_CLASS */` |
-|       - | 1545 | `		{ "Deprecated",             aMaskDep    },   /* CLASS\|FUNCTION\|METHOD\|CLASS_CONSTANT\|CONSTANT */` |
-|       - | 1546 | `		{ "AllowDynamicProperties", aMaskClass  },   /* TARGET_CLASS */` |
-|       - | 1547 | `		{ "SensitiveParameter",     aMaskParam  },   /* TARGET_PARAMETER */` |
-|       - | 1548 | `		{ "ReturnTypeWillChange",   aMaskMethod },   /* TARGET_METHOD */` |
-|       - | 1549 | `		{ "Override",               aMaskMembr  },   /* METHOD\|PROPERTY (php 8.5) */` |
-|       - | 1550 | `		{ "NoDiscard",              aMaskCallee },   /* FUNCTION\|METHOD (php 8.5) */` |
-|       - | 1551 | `		{ "DelayedTargetValidation", aMaskAll   },   /* TARGET_ALL (php 8.5) */` |
-|       - | 1552 | `	};` |
-|    7930 | 1553 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|       - | 1554 | `	sxu32 n;` |
-|   71330 | 1555 | `	for( n = 0 ; rc == SXRET_OK && n < SX_ARRAYSIZE(aOwnAttr) ; ++n ){` |
-|   95061 | 1556 | `		rc = PH7_NativeClassAddAttribute(&(*pVm),` |
-|   95056 | 1557 | `			PH7_VmExtractClass(&(*pVm),aOwnAttr[n].zClass,` |
-|   63400 | 1558 | `				(sxu32)SyStrlen(aOwnAttr[n].zClass),FALSE,0),` |
-|   63400 | 1559 | `			"Attribute",aOwnAttr[n].aArg,1);` |
-|   31661 | 1560 | `	}` |
-|    7930 | 1561 | `	return rc;` |
-|       5 | 1562 | `}` |
-|       - | 1563 | `/*` |
-|       - | 1564 | ` * stdClass and Random\RandomException.` |
-|       - | 1565 | ` *` |
-|       - | 1566 | ` * stdClass is EMPTY in php too — it holds only dynamic properties — so the whole` |
-|       - | 1567 | `` * declaration is the row. `Random\RandomException` is the first NAMESPACED class`` |
-|       - | 1568 | ` * declared from C: the engine keys its class table by the FULLY QUALIFIED name` |
-|       - | 1569 | `` * (the compiler resolves `namespace Random { class RandomException }` to exactly`` |
-|       - | 1570 | ` * this string before installing), so a spec row spells the FQN and needs no` |
-|       - | 1571 | ` * namespace machinery at all. It also retires the chunk this file kept ALONE for` |
-|       - | 1572 | `` * it, whose comment explains why: a `namespace` declaration is not reset at its`` |
-|       - | 1573 | ` * closing brace here, so anything following it in the same chunk would have` |
-|       - | 1574 | ` * leaked into the Random namespace.` |
-|       - | 1575 | ` */` |
-|    7925 | 1576 | `static sxi32 VmInstallStdClasses(ph7_vm *pVm)` |
-|       5 | 1577 | `{` |
-|       - | 1578 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|       - | 1579 | `		{ "stdClass", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1580 | `		/* unserialize()'s carrier for a disallowed or unknown class: as empty as` |
-|       - | 1581 | `		 * stdClass (its properties are the payload's, created dynamically); what` |
-|       - | 1582 | `		 * makes it special is the pVm->pIncClass checks at the access sites. */` |
-|       - | 1583 | `		{ "__PHP_Incomplete_Class", 0, 0, PH7_CLASS_FINAL, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1584 | `		{ "Random\\RandomException", "Exception", 0, PH7_CLASS_NOCLONE,` |
-|       - | 1585 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1586 | `		/* php 8.5's filter exceptions: FILTER_THROW_ON_FAILURE raises the second,` |
-|       - | 1587 | `		 * and the first is the base a caller catches to mean "any filter error". */` |
-|       - | 1588 | `		{ "Filter\\FilterException", "Exception", 0, 0,` |
-|       - | 1589 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1590 | `		{ "Filter\\FilterFailedException", "Filter\\FilterException", 0, 0,` |
-|       - | 1591 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|       - | 1592 | `	};` |
-|    7930 | 1593 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|       5 | 1594 | `}` |
-|    7925 | 1595 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
-|       5 | 1596 | `{` |
-|       - | 1597 | `	SyString sBuiltin;` |
-|       - | 1598 | `	/* The interfaces first: everything below implements one of them` |
-|       - | 1599 | `	 * (Exception implements Throwable). */` |
-|    7930 | 1600 | `	VmInstallCoreInterfaces(&(*pVm));` |
-|    7930 | 1601 | `	VmInstallExceptions(&(*pVm));` |
-|    7930 | 1602 | `	VmInstallStdClasses(&(*pVm));` |
-|    7930 | 1603 | `	VmInstallDirectory(&(*pVm));` |
-|    7930 | 1604 | `	VmInstallAttributes(&(*pVm));` |
-|    7930 | 1605 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
-|       - | 1606 | `	/* Compile the built-in library */` |
-|    7930 | 1607 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
-|    7930 | 1608 | `	return SXRET_OK;` |
-|       5 | 1609 | `}` |
-|       - | 1610 |  |
+|       - |  305 | `   "function array_count_values(array $array): array {"\` |
+|       - |  306 | `   "  $out = array();"\` |
+|       - |  307 | `   "  foreach( $array as $v ){"\` |
+|       - |  308 | `   "    if( !is_int($v) && !is_string($v) ){"\` |
+|       - |  309 | `   "      trigger_error('array_count_values(): Can only count string and integer values, entry skipped', E_USER_WARNING);"\` |
+|       - |  310 | `   "      continue;"\` |
+|       - |  311 | `   "    }"\` |
+|       - |  312 | `   "    if( isset($out[$v]) ){ $out[$v] = $out[$v] + 1; } else { $out[$v] = 1; }"\` |
+|       - |  313 | `   "  }"\` |
+|       - |  314 | `   "  return $out;"\` |
+|       - |  315 | `   "}"\` |
+|       - |  316 | `   "function array_change_key_case(array $array, int $case = CASE_LOWER): array {"\` |
+|       - |  317 | `   "  $out = array();"\` |
+|       - |  318 | `   "  foreach( $array as $k => $v ){"\` |
+|       - |  319 | `   "    if( is_string($k) ){ $k = ($case == CASE_UPPER) ? strtoupper($k) : strtolower($k); }"\` |
+|       - |  320 | `   "    $out[$k] = $v;"\` |
+|       - |  321 | `   "  }"\` |
+|       - |  322 | `   "  return $out;"\` |
+|       - |  323 | `   "}"\` |
+|       - |  324 | `   "function array_replace_recursive(array $array, array ...$replacements): array {"\` |
+|       - |  325 | `   "  foreach( $replacements as $o ){"\` |
+|       - |  326 | `   "    foreach( $o as $k => $v ){"\` |
+|       - |  327 | `   "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\` |
+|       - |  328 | `   "        $array[$k] = array_replace_recursive($array[$k], $v);"\` |
+|       - |  329 | `   "      }else{"\` |
+|       - |  330 | `   "        $array[$k] = $v;"\` |
+|       - |  331 | `   "      }"\` |
+|       - |  332 | `   "    }"\` |
+|       - |  333 | `   "  }"\` |
+|       - |  334 | `   "  return $array;"\` |
+|       - |  335 | `   "}"\` |
+|       - |  336 | `   /* class_parents/class_implements/class_uses moved to C (vm_builtin_class.c):` |
+|       - |  337 | `    * as prelude wrappers they gated on class_exists(), so an interface, a trait` |
+|       - |  338 | `    * and an enum all answered FALSE where php answers a list; class_uses could` |
+|       - |  339 | `    * not reach the trait table at all and returned the empty set for every class;` |
+|       - |  340 | `    * and the E_WARNING php raises for a name nothing declares cannot be raised` |
+|       - |  341 | `    * from here at php's severity or against the CALLER's line. */\` |
+|       - |  342 | `   "function ip2long(string $ip): int\|false {"\` |
+|       - |  343 | `   "  $p = explode('.', $ip);"\` |
+|       - |  344 | `   "  if( count($p) !== 4 ){ return false; }"\` |
+|       - |  345 | `   "  $n = 0;"\` |
+|       - |  346 | `   "  foreach( $p as $o ){"\` |
+|       - |  347 | `   "    if( !ctype_digit($o) \|\| (int)$o < 0 \|\| (int)$o > 255 ){ return false; }"\` |
+|       - |  348 | `   "    $n = $n * 256 + (int)$o;"\` |
+|       - |  349 | `   "  }"\` |
+|       - |  350 | `   "  return $n;"\` |
+|       - |  351 | `   "}"\` |
+|       - |  352 | `   "function long2ip(int $ip): string {"\` |
+|       - |  353 | `   "  return (($ip >> 24) & 255) . '.' . (($ip >> 16) & 255) . '.' . (($ip >> 8) & 255) . '.' . ($ip & 255);"\` |
+|       - |  354 | `   "}"\` |
+|       - |  355 | `   "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\` |
+|       - |  356 | `   "function str_increment(string $string): string {"\` |
+|       - |  357 | `   "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\` |
+|       - |  358 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
+|       - |  359 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
+|       - |  360 | `   "    $c = $string[$i];"\` |
+|       - |  361 | `   "    if( $c === 'z' ){ $string[$i] = 'a'; }"\` |
+|       - |  362 | `   "    elseif( $c === 'Z' ){ $string[$i] = 'A'; }"\` |
+|       - |  363 | `   "    elseif( $c === '9' ){ $string[$i] = '0'; }"\` |
+|       - |  364 | `   "    else { $string[$i] = chr(ord($c) + 1); return $string; }"\` |
+|       - |  365 | `   "  }"\` |
+|       - |  366 | `   "  $first = $string[0];"\` |
+|       - |  367 | `   "  if( $first === '0' ){ return '1' . $string; }"\` |
+|       - |  368 | `   "  if( $first === 'a' ){ return 'a' . $string; }"\` |
+|       - |  369 | `   "  return 'A' . $string;"\` |
+|       - |  370 | `   "}"\` |
+|       - |  371 | `   "/* php 8.3 str_decrement(): inverse of str_increment(); throws out of range"\` |
+|       - |  372 | `   " * at the bottom of the counting sequence. */"\` |
+|       - |  373 | `   "function str_decrement(string $string): string {"\` |
+|       - |  374 | `   "  if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) must not be empty'); }"\` |
+|       - |  375 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
+|       - |  376 | `   "  $orig = $string;"\` |
+|       - |  377 | `   "  $borrowed = false;"\` |
+|       - |  378 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
+|       - |  379 | `   "    $c = $string[$i];"\` |
+|       - |  380 | `   "    if( $c === 'a' ){ $string[$i] = 'z'; }"\` |
+|       - |  381 | `   "    elseif( $c === 'A' ){ $string[$i] = 'Z'; }"\` |
+|       - |  382 | `   "    elseif( $c === '0' ){ $string[$i] = '9'; }"\` |
+|       - |  383 | `   "    else { $string[$i] = chr(ord($c) - 1); $borrowed = false; break; }"\` |
+|       - |  384 | `   "    if( $i === 0 ){ $borrowed = true; }"\` |
+|       - |  385 | `   "  }"\` |
+|       - |  386 | `   "  if( $borrowed ){"\` |
+|       - |  387 | `   "    if( $string[0] === '9' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
+|       - |  388 | `   "    $string = substr($string, 1);"\` |
+|       - |  389 | `   "    if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
+|       - |  390 | `   "  } elseif( strlen($string) > 1 && $string[0] === '0' ){"\` |
+|       - |  391 | `   "    $string = substr($string, 1);"\` |
+|       - |  392 | `   "  }"\` |
+|       - |  393 | `   "  return $string;"\` |
+|       - |  394 | `   "}"\` |
+|       - |  395 | `   /* fileperms/fileowner/filegroup/fileinode moved to C (vfs.c, VfsStatField):` |
+|       - |  396 | `    * as prelude wrappers over stat() three of them said nothing on a failed stat` |
+|       - |  397 | `    * and the fourth raised trigger_error, whose errno is E_USER_WARNING's 512 and` |
+|       - |  398 | `    * whose line is this chunk's rather than the caller's. */\` |
+|       - |  399 | `   "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\` |
+|       - |  400 | `   "function clearstatcache(bool $clear_realpath_cache = false, string $filename = ''): void {}"\` |
+|       - |  401 | `   /* mb_ucfirst/mb_lcfirst moved to C (builtin_mb.c): as prelude wrappers they` |
+|       - |  402 | `    * dropped $encoding, UPPER-cased where php title-cases ('ß' -> 'SS' for php's` |
+|       - |  403 | `    * 'Ss') and lowered a leading Σ with nothing after it, which is php's FINAL` |
+|       - |  404 | `    * sigma and not what a first character gets. */\` |
+|       - |  405 | `   "/* Creates a temporary file and returns its name */"\` |
+|       - |  406 | `   "function tempnam(string $directory,string $prefix): string\|false"\` |
+|       - |  407 | `   "{"\` |
+|       - |  408 | `   "   /* php's Z_PARAM_PATH refusal on BOTH parameters (see scandir above); the prefix"\` |
+|       - |  409 | `   "    * is a path fragment there too, and PHL used to build a filename with the NUL"\` |
+|       - |  410 | `   "    * still in it. */"\` |
+|       - |  411 | `   "   if( strpos($directory, chr(0)) !== false ){"\` |
+|       - |  412 | `   "     throw new ValueError('tempnam(): Argument #1 ($directory) must not contain any null bytes');"\` |
+|       - |  413 | `   "   }"\` |
+|       - |  414 | `   "   if( strpos($prefix, chr(0)) !== false ){"\` |
+|       - |  415 | `   "     throw new ValueError('tempnam(): Argument #2 ($prefix) must not contain any null bytes');"\` |
+|       - |  416 | `   "   }"\` |
+|       - |  417 | `   "   /* php falls back to the system temporary directory when the one it was"\` |
+|       - |  418 | `   "    * given cannot HOLD the file, and says so -- except for the empty"\` |
+|       - |  419 | ``   "    * directory, which it reads as `use the temp dir` and answers silently."\`` |
+|       - |  420 | `   "    * PHL took '' literally and spent 64 tries failing at the filesystem"\` |
+|       - |  421 | `   "    * ROOT. Whether a directory can hold it is settled by TRYING, not by"\` |
+|       - |  422 | `   "    * asking is_writable(): the two disagree on Windows. */"\` |
+|       - |  423 | `   "   $zTmp = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR);"\` |
+|       - |  424 | `   "   $zDir = $directory === '' ? $zTmp : rtrim($directory, DIRECTORY_SEPARATOR);"\` |
+|       - |  425 | `   "   if( is_dir($zDir) && is_writable($zDir) ){"\` |
+|       - |  426 | `   "     $zOut = __tempnam_in($zDir, $prefix);"\` |
+|       - |  427 | `   "     if( $zOut !== false ){ return $zOut; }"\` |
+|       - |  428 | `   "   }"\` |
+|       - |  429 | `   "   if( $zDir === $zTmp ){ return false; }"\` |
+|       - |  430 | `   "   trigger_error(\"tempnam(): file created in the system's temporary directory\", E_USER_NOTICE);"\` |
+|       - |  431 | `   "   return __tempnam_in($zTmp, $prefix);"\` |
+|       - |  432 | `   "}"\` |
+|       - |  433 | `   "function __tempnam_in(string $zDir, string $prefix)"\` |
+|       - |  434 | `   "{"\` |
+|       - |  435 | `   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is"\` |
+|       - |  436 | `   "    * unique -- returning a bare name left the caller with a path that does"\` |
+|       - |  437 | `   "    * not exist, so file_exists() was false and unlink() failed on it. */"\` |
+|       - |  438 | `   "   for( $i = 0 ; $i < 64 ; ++$i ){"\` |
+|       - |  439 | `   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$prefix.rand_str(12);"\` |
+|       - |  440 | `   "     if( file_exists($zPath) ){ continue; }"\` |
+|       - |  441 | `   "     $pHandle = @fopen($zPath,'x');"\` |
+|       - |  442 | `   "     if( $pHandle === false ){ return false; }"\` |
+|       - |  443 | `   "     fclose($pHandle);"\` |
+|       - |  444 | `   "     @chmod($zPath, 0600);"\` |
+|       - |  445 | `   "     return $zPath;"\` |
+|       - |  446 | `   "   }"\` |
+|       - |  447 | `   "   return false;"\` |
+|       - |  448 | `   "}"\` |
+|       - |  449 | `	/* fileowner/filegroup/fileinode: see the note beside fileperms above. */\` |
+|       - |  450 | `	""` |
+|       - |  451 |  |
+|       - |  452 | `/*` |
+|       - |  453 | ` * ---------------------------------------------------------------------------` |
+|       - |  454 | ` * The Exception / Error family, declared from C.` |
+|       - |  455 | ` *` |
+|       - |  456 | ` * php's two roots are one implementation twice over (its stub says` |
+|       - |  457 | `` * `@implementation-alias Exception::__construct` for every one of Error's`` |
+|       - |  458 | ` * methods), so the bodies below are shared by both spec tables and the` |
+|       - |  459 | ` * ~20 subclasses are declaration-only rows.` |
+|       - |  460 | ` *` |
+|       - |  461 | `` * php's seven slots, in php's own declaration order. `string` is php's cache of`` |
+|       - |  462 | ` * the __toString rendering -- unused by the engine but PRESENT on every` |
+|       - |  463 | ` * presentation surface, which is why it is declared here rather than skipped:` |
+|       - |  464 | ` * var_dump/print_r/(array)/serialize all show it, and PHL was one property short` |
+|       - |  465 | ` * of php on every exception ever printed.` |
+|       - |  466 | ` * ---------------------------------------------------------------------------` |
+|       - |  467 | ` */` |
+|       - |  468 | `#define EXC_MESSAGE  "message"` |
+|       - |  469 | `#define EXC_STRING   "string"` |
+|       - |  470 | `#define EXC_CODE     "code"` |
+|       - |  471 | `#define EXC_FILE     "file"` |
+|       - |  472 | `#define EXC_LINE     "line"` |
+|       - |  473 | `#define EXC_TRACE    "trace"` |
+|       - |  474 | `#define EXC_PREVIOUS "previous"` |
+|       - |  475 | `#define EXC_SEVERITY "severity"` |
+|       - |  476 | `/*` |
+|       - |  477 | ` * Answer a declared slot the way php's getter does. Three of the seven CONVERT` |
+|       - |  478 | ` * rather than copy — getMessage()/getFile() answer a string and getLine() an int,` |
+|       - |  479 | ` * whatever the slot holds — and that shows twice: a subclass assigning` |
+|       - |  480 | `` * `$this->message = 5` reads back "5", and a slot __wakeup has DROPPED reads as`` |
+|       - |  481 | ` * "" rather than null. The other four are verbatim copies (getCode() of that same` |
+|       - |  482 | ` * subclass really is the int).` |
+|       - |  483 | ` */` |
+|       - |  484 | `#define EXC_READ_RAW 0` |
+|       - |  485 | `#define EXC_READ_STR 1` |
+|       - |  486 | `#define EXC_READ_INT 2` |
+|   24021 |  487 | `static int VmExcReadSlot(ph7_context *pCtx,const char *zSlot,int iAs)` |
+|       5 |  488 | `{` |
+|   24026 |  489 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   24026 |  490 | `	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;` |
+|       - |  491 | `	ph7_value sTmp;` |
+|   24026 |  492 | `	if( iAs == EXC_READ_RAW ){` |
+|    1905 |  493 | `		if( pVal ){` |
+|    1905 |  494 | `			ph7_result_value(pCtx,pVal);` |
+|     955 |  495 | `		}else{` |
+|     ! 0 |  496 | `			ph7_result_null(pCtx);` |
+|       - |  497 | `		}` |
+|    1905 |  498 | `		return PH7_OK;` |
+|       - |  499 | `	}` |
+|       - |  500 | `	/* Through a COPY: converting the slot would rewrite the exception's state. */` |
+|   22126 |  501 | `	PH7_MemObjInit(pCtx->pVm,&sTmp);` |
+|   22126 |  502 | `	if( pVal ){` |
+|   22126 |  503 | `		PH7_MemObjStore(pVal,&sTmp);` |
+|   11033 |  504 | `	}` |
+|   22126 |  505 | `	if( iAs == EXC_READ_INT ){` |
+|    1481 |  506 | `		PH7_MemObjToInteger(&sTmp);` |
+|     743 |  507 | `	}else{` |
+|   20650 |  508 | `		PH7_MemObjToString(&sTmp);` |
+|       - |  509 | `	}` |
+|   22126 |  510 | `	ph7_result_value(pCtx,&sTmp);` |
+|   22126 |  511 | `	PH7_MemObjRelease(&sTmp);` |
+|   22126 |  512 | `	return PH7_OK;` |
+|   11988 |  513 | `}` |
+|   19931 |  514 | `static int vm_builtin_Exception_getMessage(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  515 | `{` |
+|    9938 |  516 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|   19936 |  517 | `	return VmExcReadSlot(pCtx,EXC_MESSAGE,EXC_READ_STR);` |
+|       5 |  518 | `}` |
+|    1398 |  519 | `static int vm_builtin_Exception_getCode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  520 | `{` |
+|     699 |  521 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|    1403 |  522 | `	return VmExcReadSlot(pCtx,EXC_CODE,EXC_READ_RAW);` |
+|       5 |  523 | `}` |
+|     714 |  524 | `static int vm_builtin_Exception_getFile(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  525 | `{` |
+|     357 |  526 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     719 |  527 | `	return VmExcReadSlot(pCtx,EXC_FILE,EXC_READ_STR);` |
+|       5 |  528 | `}` |
+|    1476 |  529 | `static int vm_builtin_Exception_getLine(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  530 | `{` |
+|     738 |  531 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|    1481 |  532 | `	return VmExcReadSlot(pCtx,EXC_LINE,EXC_READ_INT);` |
+|       5 |  533 | `}` |
+|     378 |  534 | `static int vm_builtin_Exception_getTrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  535 | `{` |
+|     189 |  536 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     383 |  537 | `	return VmExcReadSlot(pCtx,EXC_TRACE,EXC_READ_RAW);` |
+|       5 |  538 | `}` |
+|     118 |  539 | `static int vm_builtin_Exception_getPrevious(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       2 |  540 | `{` |
+|      59 |  541 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     120 |  542 | `	return VmExcReadSlot(pCtx,EXC_PREVIOUS,EXC_READ_RAW);` |
+|       2 |  543 | `}` |
+|       6 |  544 | `static int vm_builtin_ErrorException_getSeverity(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       2 |  545 | `{` |
+|       3 |  546 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|       8 |  547 | `	return VmExcReadSlot(pCtx,EXC_SEVERITY,EXC_READ_RAW);` |
+|       2 |  548 | `}` |
+|       - |  549 | `/*` |
+|       - |  550 | ` * php's zend_update_exception_properties: each of the three is written only when` |
+|       - |  551 | ``  * the caller actually supplied it — a message when the argument was PASSED (`""` `` |
+|       - |  552 | ` * included), a code when it is NON-ZERO, a previous when it is an object. That is` |
+|       - |  553 | ` * not the same as writing the defaults: a subclass may redeclare` |
+|       - |  554 | `` * `protected $message = 'default'`, and php keeps it for `new Sub()`.`` |
+|       - |  555 | ` */` |
+| 1469883 |  556 | `static void VmExcInitProps(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,` |
+|       - |  557 | `	ph7_value **apArg,int iPrev)` |
+|       5 |  558 | `{` |
+| 1469888 |  559 | `	if( nArg > 0 ){` |
+| 1469692 |  560 | `		int nMsg = 0;` |
+| 1469692 |  561 | `		const char *zMsg = ph7_value_to_string(apArg[0],&nMsg);` |
+| 1469692 |  562 | `		PH7_NativeSetAttrStr(pCtx->pVm,pThis,EXC_MESSAGE,zMsg,nMsg);` |
+|  734816 |  563 | `	}` |
+| 1469888 |  564 | `	if( nArg > 1 ){` |
+|       - |  565 | `		ph7_value sCode;` |
+|    1401 |  566 | `		PH7_MemObjInit(pCtx->pVm,&sCode);` |
+|    1401 |  567 | `		PH7_MemObjStore(apArg[1],&sCode);` |
+|    1401 |  568 | `		PH7_MemObjToInteger(&sCode);` |
+|    1401 |  569 | `		if( sCode.x.iVal != 0 ){` |
+|    1361 |  570 | `			PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_CODE,sCode.x.iVal);` |
+|     678 |  571 | `		}` |
+|    1401 |  572 | `		PH7_MemObjRelease(&sCode);` |
+|     698 |  573 | `	}` |
+|       - |  574 | ``	/* php's `previous` is the LAST parameter of each constructor, and`` |
+|       - |  575 | `	 * ErrorException's is #5 rather than #2. */` |
+| 1469888 |  576 | `	if( nArg > iPrev && (apArg[iPrev]->iFlags & MEMOBJ_OBJ) && apArg[iPrev]->x.pOther ){` |
+|      41 |  577 | `		PH7_NativeSetAttrObj(pCtx->pVm,pThis,EXC_PREVIOUS,` |
+|      24 |  578 | `			(ph7_class_instance *)apArg[iPrev]->x.pOther);` |
+|      12 |  579 | `	}` |
+| 1469888 |  580 | `}` |
+| 1469837 |  581 | `static int vm_builtin_Exception_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  582 | `{` |
+| 1469842 |  583 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+| 1469842 |  584 | `	if( pThis ){` |
+| 1469842 |  585 | `		VmExcInitProps(pCtx,pThis,nArg,apArg,2);` |
+|  734891 |  586 | `	}` |
+| 1469842 |  587 | `	return PH7_OK;` |
+|       5 |  588 | `}` |
+|       - |  589 | `/*` |
+|       - |  590 | ` * ErrorException's own constructor: php's Exception three, then severity, then` |
+|       - |  591 | `` * the OPTIONAL file/line overrides. php's `?string $filename = null` /`` |
+|       - |  592 | `` * `?int $line = null` mean "keep the creation site" — the chunk defaulted them to`` |
+|       - |  593 | ` * __FILE__/__LINE__, which resolved against the EMBEDDED chunk and reported` |
+|       - |  594 | `` * `:MEMORY:` line 1 for every ErrorException that did not pass them. php's one`` |
+|       - |  595 | ` * asymmetry: a filename WITHOUT a line resets the line to 0.` |
+|       - |  596 | ` */` |
+|      46 |  597 | `static int vm_builtin_ErrorException_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       3 |  598 | `{` |
+|      49 |  599 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|      49 |  600 | `	if( pThis == 0 ){` |
+|     ! 0 |  601 | `		return PH7_OK;` |
+|       - |  602 | `	}` |
+|      49 |  603 | `	VmExcInitProps(pCtx,pThis,nArg,apArg,5);` |
+|      49 |  604 | `	if( nArg > 2 ){` |
+|      22 |  605 | `		PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_SEVERITY,ph7_value_to_int64(apArg[2]));` |
+|      10 |  606 | `	}` |
+|      49 |  607 | `	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){` |
+|      12 |  608 | `		int nFile = 0;` |
+|      12 |  609 | `		const char *zFile = ph7_value_to_string(apArg[3],&nFile);` |
+|      12 |  610 | `		PH7_NativeSetAttrStr(pCtx->pVm,pThis,EXC_FILE,zFile,nFile);` |
+|      12 |  611 | `		if( nArg < 5 \|\| ph7_value_is_null(apArg[4]) ){` |
+|       3 |  612 | `			PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_LINE,0);` |
+|       1 |  613 | `		}` |
+|       5 |  614 | `	}` |
+|      49 |  615 | `	if( nArg > 4 && !ph7_value_is_null(apArg[4]) ){` |
+|      10 |  616 | `		PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_LINE,ph7_value_to_int64(apArg[4]));` |
+|       4 |  617 | `	}` |
+|      49 |  618 | `	return PH7_OK;` |
+|      26 |  619 | `}` |
+|       - |  620 | `/*` |
+|       - |  621 | ` * php's private __clone. It has an empty body and is never reached: the class` |
+|       - |  622 | ` * carries php's own clone refusal (PH7_CLASS_NOCLONE, answered before any body` |
+|       - |  623 | `` * runs), which is what `clone $e` reports — "Trying to clone an uncloneable`` |
+|       - |  624 | ` * object of class X", not a visibility error. Declaring it is still php-visible:` |
+|       - |  625 | `` * Reflection lists it, and `$e->__clone()` from inside the class works.`` |
+|       - |  626 | ` */` |
+|     ! 0 |  627 | `static int vm_builtin_Exception_clone(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     ! 0 |  628 | `{` |
+|     ! 0 |  629 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     ! 0 |  630 | `	ph7_result_null(pCtx);` |
+|     ! 0 |  631 | `	return PH7_OK;` |
+|     ! 0 |  632 | `}` |
+|       - |  633 | `/*` |
+|       - |  634 | ` * php's __wakeup: the two UNTYPED slots are the only ones a serialized payload` |
+|       - |  635 | ` * can lie about (the other five are typed and the store enforces them), so php` |
+|       - |  636 | ` * DROPS a message that is not a string and a code that is not an int rather than` |
+|       - |  637 | ` * letting a method read one.` |
+|       - |  638 | ` */` |
+|     ! 0 |  639 | `static void VmExcDropSlot(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)` |
+|     ! 0 |  640 | `{` |
+|     ! 0 |  641 | `	SyHashEntry *pEntry = SyHashGet(&pThis->hAttr,(const void *)zSlot,SyStrlen(zSlot));` |
+|     ! 0 |  642 | `	if( pEntry ){` |
+|     ! 0 |  643 | `		PH7_VmReleaseInstanceAttr(&(*pVm),(VmClassAttr *)pEntry->pUserData);` |
+|     ! 0 |  644 | `		PH7_ClassInstanceDeleteAttrEntry(pThis,pEntry);` |
+|     ! 0 |  645 | `	}` |
+|     ! 0 |  646 | `}` |
+|     ! 0 |  647 | `static int vm_builtin_Exception_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     ! 0 |  648 | `{` |
+|     ! 0 |  649 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|       - |  650 | `	ph7_value *pVal;` |
+|     ! 0 |  651 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     ! 0 |  652 | `	if( pThis == 0 ){` |
+|     ! 0 |  653 | `		return PH7_OK;` |
+|       - |  654 | `	}` |
+|     ! 0 |  655 | `	pVal = PH7_NativeAttr(pThis,EXC_MESSAGE);` |
+|     ! 0 |  656 | `	if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 && (pVal->iFlags & MEMOBJ_STRING) == 0 ){` |
+|     ! 0 |  657 | `		VmExcDropSlot(pCtx->pVm,pThis,EXC_MESSAGE);` |
+|     ! 0 |  658 | `	}` |
+|     ! 0 |  659 | `	pVal = PH7_NativeAttr(pThis,EXC_CODE);` |
+|     ! 0 |  660 | `	if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 && (pVal->iFlags & MEMOBJ_INT) == 0 ){` |
+|     ! 0 |  661 | `		VmExcDropSlot(pCtx->pVm,pThis,EXC_CODE);` |
+|     ! 0 |  662 | `	}` |
+|     ! 0 |  663 | `	ph7_result_null(pCtx);` |
+|     ! 0 |  664 | `	return PH7_OK;` |
+|     ! 0 |  665 | `}` |
+|       - |  666 | `/*` |
+|       - |  667 | ` * php's smart_str_append_zval: a scalar or an enum case, the way a trace argument` |
+|       - |  668 | `` * and an unhandled match case print one. A string is single-quoted, ESCAPED (`\n`,`` |
+|       - |  669 | `` * `\\`, `\xNN` for anything outside printable ASCII) and cut after nMax bytes with`` |
+|       - |  670 | `` * `...` inside the quotes -- nMax is zend.exception_string_param_max_len, so at 0`` |
+|       - |  671 | `` * every non-empty string is `'...'` and the empty one `''`. A float takes php's`` |
+|       - |  672 | `` * precision and always shows its fraction; an enum case prints `Enum::Case`.`` |
+|       - |  673 | ` * Answers 0, appending nothing, for what php renders another way: an array, any` |
+|       - |  674 | ` * other object, a resource.` |
+|       - |  675 | ` */` |
+|     262 |  676 | `PH7_PRIVATE int PH7_VmAppendTraceScalar(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg,sxi64 nMax)` |
+|       3 |  677 | `{` |
+|     265 |  678 | `	if( pArg == 0 \|\| (pArg->iFlags & MEMOBJ_NULL) ){` |
+|      14 |  679 | `		SyBlobAppend(pOut,"NULL",sizeof("NULL")-1);` |
+|      14 |  680 | `		return 1;` |
+|       - |  681 | `	}` |
+|     253 |  682 | `	if( pArg->iFlags & MEMOBJ_BOOL ){` |
+|      24 |  683 | `		if( pArg->x.iVal ){` |
+|      14 |  684 | `			SyBlobAppend(pOut,"true",sizeof("true")-1);` |
+|       8 |  685 | `		}else{` |
+|      12 |  686 | `			SyBlobAppend(pOut,"false",sizeof("false")-1);` |
+|       - |  687 | `		}` |
+|      24 |  688 | `		return 1;` |
+|       - |  689 | `	}` |
+|     231 |  690 | `	if( pArg->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_RES) ){` |
+|      17 |  691 | `		return 0;` |
+|       - |  692 | `	}` |
+|     217 |  693 | `	if( pArg->iFlags & MEMOBJ_OBJ ){` |
+|      27 |  694 | `		ph7_class_instance *pObj = (ph7_class_instance *)pArg->x.pOther;` |
+|       - |  695 | `		ph7_value *pName;` |
+|      27 |  696 | `		if( pObj == 0 \|\| pObj->pClass == 0 \|\| (pObj->pClass->iFlags & PH7_CLASS_ENUM) == 0 ){` |
+|      17 |  697 | `			return 0;` |
+|       - |  698 | `		}` |
+|      11 |  699 | `		pName = PH7_NativeAttr(pObj,"name");` |
+|      11 |  700 | `		SyBlobFormat(pOut,"%z::",&pObj->pClass->sDisp);` |
+|      11 |  701 | `		if( pName ){` |
+|      11 |  702 | `			SyBlobAppend(pOut,SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));` |
+|       5 |  703 | `		}` |
+|      11 |  704 | `		return 1;` |
+|       - |  705 | `	}` |
+|     193 |  706 | `	if( pArg->iFlags & MEMOBJ_STRING ){` |
+|       - |  707 | `		static const char zHex[] = "0123456789ABCDEF";` |
+|      91 |  708 | `		const unsigned char *z = (const unsigned char *)SyBlobData(&pArg->sBlob);` |
+|      91 |  709 | `		sxu32 n = SyBlobLength(&pArg->sBlob);` |
+|      91 |  710 | `		sxu32 nKeep = (nMax < 0 \|\| (sxu64)nMax >= n) ? n : (sxu32)nMax;` |
+|       - |  711 | `		sxu32 i;` |
+|      91 |  712 | `		SyBlobAppend(pOut,"'",1);` |
+|     165 |  713 | `		for( i = 0 ; i < nKeep ; i++ ){` |
+|      75 |  714 | `			unsigned char c = z[i];` |
+|       - |  715 | `			char zEsc[4];` |
+|      75 |  716 | `			if( c >= 32 && c <= 126 && c != '\\' ){` |
+|      59 |  717 | `				SyBlobAppend(pOut,&z[i],1);` |
+|      61 |  718 | `				continue;` |
+|       - |  719 | `			}` |
+|      17 |  720 | `			zEsc[0] = '\\';` |
+|      17 |  721 | `			switch( c ){` |
+|       5 |  722 | `			case '\n':  zEsc[1] = 'n';  break;` |
+|     ! 0 |  723 | `			case '\r':  zEsc[1] = 'r';  break;` |
+|       5 |  724 | `			case '\t':  zEsc[1] = 't';  break;` |
+|     ! 0 |  725 | `			case '\f':  zEsc[1] = 'f';  break;` |
+|     ! 0 |  726 | `			case '\v':  zEsc[1] = 'v';  break;` |
+|       3 |  727 | `			case '\\': zEsc[1] = '\\'; break;` |
+|       3 |  728 | `			case 27:    zEsc[1] = 'e';  break;` |
+|       2 |  729 | `			default:` |
+|       5 |  730 | `				zEsc[1] = 'x';` |
+|       5 |  731 | `				zEsc[2] = zHex[c >> 4];` |
+|       5 |  732 | `				zEsc[3] = zHex[c & 0xf];` |
+|       5 |  733 | `				SyBlobAppend(pOut,zEsc,4);` |
+|       5 |  734 | `				continue;` |
+|       - |  735 | `			}` |
+|      13 |  736 | `			SyBlobAppend(pOut,zEsc,2);` |
+|       7 |  737 | `		}` |
+|      91 |  738 | `		if( nKeep < n ){` |
+|      77 |  739 | `			SyBlobAppend(pOut,"...",sizeof("...")-1);` |
+|      37 |  740 | `		}` |
+|      91 |  741 | `		SyBlobAppend(pOut,"'",1);` |
+|      91 |  742 | `		return 1;` |
+|       - |  743 | `	}` |
+|       - |  744 | `	{` |
+|       - |  745 | `		/* int / float: php prints the scalar itself -- but a trace FLOAT always` |
+|       - |  746 | `		 * shows its fraction (1.0, not the "1" the ordinary string cast produces),` |
+|       - |  747 | `		 * which is what tells a float argument apart from an int one. INF/NAN and` |
+|       - |  748 | `		 * the exponent forms already carry a marker. */` |
+|       - |  749 | `		ph7_value sTmp;` |
+|       - |  750 | `		const char *z;` |
+|       - |  751 | `		sxu32 n,i;` |
+|     104 |  752 | `		int bMarked = 0;` |
+|     104 |  753 | `		PH7_MemObjInit(&(*pVm),&sTmp);` |
+|     104 |  754 | `		PH7_MemObjStore(pArg,&sTmp);` |
+|     104 |  755 | `		PH7_MemObjToString(&sTmp);` |
+|     104 |  756 | `		z = (const char *)SyBlobData(&sTmp.sBlob);` |
+|     104 |  757 | `		n = SyBlobLength(&sTmp.sBlob);` |
+|     104 |  758 | `		SyBlobAppend(pOut,z,n);` |
+|     104 |  759 | `		if( pArg->iFlags & MEMOBJ_REAL ){` |
+|     108 |  760 | `			for( i = 0 ; i < n ; ++i ){` |
+|      96 |  761 | `				if( z[i] < '0' \|\| z[i] > '9' ){` |
+|      54 |  762 | `					if( z[i] != '-' && z[i] != '+' ){` |
+|      44 |  763 | `						bMarked = 1;` |
+|      44 |  764 | `						break;` |
+|       - |  765 | `					}` |
+|       5 |  766 | `				}` |
+|      28 |  767 | `			}` |
+|      56 |  768 | `			if( !bMarked ){` |
+|      14 |  769 | `				SyBlobAppend(pOut,".0",sizeof(".0")-1);` |
+|       6 |  770 | `			}` |
+|      27 |  771 | `		}` |
+|     104 |  772 | `		PH7_MemObjRelease(&sTmp);` |
+|       - |  773 | `	}` |
+|     104 |  774 | `	return 1;` |
+|     134 |  775 | `}` |
+|       - |  776 | `/*` |
+|       - |  777 | ` * One argument of a trace frame, php's _build_trace_args: the scalar shapes above,` |
+|       - |  778 | `` * then `Array`, `Object(Class)` and `Resource id #N` for the rest.`` |
+|       - |  779 | ` */` |
+|     244 |  780 | `static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg,sxi64 nMax)` |
+|       3 |  781 | `{` |
+|     247 |  782 | `	if( PH7_VmAppendTraceScalar(&(*pVm),pOut,pArg,nMax) ){` |
+|     223 |  783 | `		return;` |
+|       - |  784 | `	}` |
+|      27 |  785 | `	if( pArg->iFlags & MEMOBJ_HASHMAP ){` |
+|      15 |  786 | `		SyBlobAppend(pOut,"Array",sizeof("Array")-1);` |
+|      21 |  787 | `	}else if( pArg->iFlags & MEMOBJ_OBJ ){` |
+|      15 |  788 | `		ph7_class_instance *pObj = (ph7_class_instance *)pArg->x.pOther;` |
+|      15 |  789 | `		SyBlobAppend(pOut,"Object(",sizeof("Object(")-1);` |
+|      15 |  790 | `		if( pObj && pObj->pClass ){` |
+|      15 |  791 | `			SyBlobFormat(pOut,"%z",&pObj->pClass->sDisp);` |
+|       6 |  792 | `		}` |
+|      15 |  793 | `		SyBlobAppend(pOut,")",sizeof(")")-1);` |
+|       9 |  794 | `	}else{` |
+|       - |  795 | `		ph7_value sTmp;` |
+|     ! 0 |  796 | `		PH7_MemObjInit(&(*pVm),&sTmp);` |
+|     ! 0 |  797 | `		PH7_MemObjStore(pArg,&sTmp);` |
+|     ! 0 |  798 | `		PH7_MemObjToString(&sTmp);` |
+|     ! 0 |  799 | `		SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));` |
+|     ! 0 |  800 | `		PH7_MemObjRelease(&sTmp);` |
+|       - |  801 | `	}` |
+|     125 |  802 | `}` |
+|       - |  803 | `/* An element of a trace frame, or NULL when the frame does not carry it. */` |
+|    5406 |  804 | `static ph7_value * VmExcFrameField(ph7_vm *pVm,ph7_hashmap *pFrame,const char *zField)` |
+|       5 |  805 | `{` |
+|    5411 |  806 | `	ph7_hashmap_node *pNode = 0;` |
+|       - |  807 | `	ph7_value sKey;` |
+|       - |  808 | `	sxi32 rc;` |
+|       - |  809 | `	SyString sName;` |
+|    5411 |  810 | `	SyStringInitFromBuf(&sName,zField,SyStrlen(zField));` |
+|    5411 |  811 | `	PH7_MemObjInitFromString(&(*pVm),&sKey,&sName);` |
+|    5411 |  812 | `	rc = PH7_HashmapLookup(pFrame,&sKey,&pNode);` |
+|    5411 |  813 | `	PH7_MemObjRelease(&sKey);` |
+|    5411 |  814 | `	if( rc != SXRET_OK \|\| pNode == 0 ){` |
+|    2551 |  815 | `		return 0;` |
+|       - |  816 | `	}` |
+|    2865 |  817 | `	return (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);` |
+|    2708 |  818 | `}` |
+|    3590 |  819 | `static void VmExcFrameStr(SyBlob *pOut,ph7_value *pVal)` |
+|       5 |  820 | `{` |
+|    3595 |  821 | `	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){` |
+|    1919 |  822 | `		SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));` |
+|     957 |  823 | `	}` |
+|    3595 |  824 | `}` |
+|       - |  825 | `/* A slot's string form, taken through a COPY: converting the value in place` |
+|       - |  826 | ` * would rewrite the exception's own state. */` |
+|      12 |  827 | `static void VmExcValueStr(ph7_vm *pVm,ph7_value *pVal,SyBlob *pOut)` |
+|       3 |  828 | `{` |
+|       - |  829 | `	ph7_value sTmp;` |
+|      15 |  830 | `	if( pVal == 0 ){` |
+|     ! 0 |  831 | `		return;` |
+|       - |  832 | `	}` |
+|      15 |  833 | `	PH7_MemObjInit(&(*pVm),&sTmp);` |
+|      15 |  834 | `	PH7_MemObjStore(pVal,&sTmp);` |
+|      15 |  835 | `	PH7_MemObjToString(&sTmp);` |
+|      15 |  836 | `	SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));` |
+|      15 |  837 | `	PH7_MemObjRelease(&sTmp);` |
+|       9 |  838 | `}` |
+|       - |  839 | ``/* Does the blob contain this literal? SyBlobSearch() is `#ifndef`` |
+|       - |  840 | `` * PH7_DISABLE_BUILTIN_FUNC`, and the exception family exists in the tiny build`` |
+|       - |  841 | ` * too, so the one search this file needs is spelled out. */` |
+|     ! 0 |  842 | `static int VmExcBlobHas(SyBlob *pBlob,const char *zPat,sxu32 nPat)` |
+|     ! 0 |  843 | `{` |
+|     ! 0 |  844 | `	const char *z = (const char *)SyBlobData(pBlob);` |
+|     ! 0 |  845 | `	sxu32 n = SyBlobLength(pBlob);` |
+|       - |  846 | `	sxu32 i;` |
+|     ! 0 |  847 | `	if( nPat == 0 \|\| n < nPat ){` |
+|     ! 0 |  848 | `		return 0;` |
+|       - |  849 | `	}` |
+|     ! 0 |  850 | `	for( i = 0 ; i + nPat <= n ; i++ ){` |
+|     ! 0 |  851 | `		if( SyMemcmp((const void *)&z[i],(const void *)zPat,nPat) == 0 ){` |
+|     ! 0 |  852 | `			return 1;` |
+|       - |  853 | `		}` |
+|     ! 0 |  854 | `	}` |
+|     ! 0 |  855 | `	return 0;` |
+|     ! 0 |  856 | `}` |
+|       - |  857 | ``/* php's `Z_OBJCE_P == zend_ce_type_error \|\| == zend_ce_argument_count_error`:`` |
+|       - |  858 | ` * the two classes whose message __toString finishes with " and defined". */` |
+|      12 |  859 | `static int VmExcIsArgError(ph7_vm *pVm,ph7_class_instance *pExc)` |
+|       3 |  860 | `{` |
+|      15 |  861 | `	ph7_class *pClass = pExc ? pExc->pClass : 0;` |
+|       - |  862 | `	ph7_class *pType;` |
+|      15 |  863 | `	if( pClass == 0 ){` |
+|     ! 0 |  864 | `		return 0;` |
+|       - |  865 | `	}` |
+|      15 |  866 | `	pType = PH7_VmExtractClass(&(*pVm),"TypeError",sizeof("TypeError")-1,FALSE,0);` |
+|      15 |  867 | `	if( pType && pClass == pType ){` |
+|     ! 0 |  868 | `		return 1;` |
+|       - |  869 | `	}` |
+|      15 |  870 | `	pType = PH7_VmExtractClass(&(*pVm),"ArgumentCountError",sizeof("ArgumentCountError")-1,FALSE,0);` |
+|      15 |  871 | `	return pType != 0 && pClass == pType;` |
+|       9 |  872 | `}` |
+|       - |  873 | `/*` |
+|       - |  874 | `` * php's zend_trace_to_string: one `#N file(line): Class->method(args)` line per`` |
+|       - |  875 | `` * frame, then `#N {main}` with NO trailing newline. A frame with no `file` is`` |
+|       - |  876 | `` * php's `[internal function]: `.`` |
+|       - |  877 | ` */` |
+|     826 |  878 | `PH7_PRIVATE void PH7_VmTraceToString(ph7_vm *pVm,ph7_value *pTrace,int bMainMarker,SyBlob *pOut)` |
+|       5 |  879 | `{` |
+|       - |  880 | `	ph7_hashmap *pMap;` |
+|       - |  881 | `	ph7_hashmap_node *pEntry;` |
+|     831 |  882 | `	sxu32 nFrame = 0;` |
+|     831 |  883 | `	sxi64 nMax = PH7_VmIniGetInt(&(*pVm),"zend.exception_string_param_max_len",0);` |
+|     831 |  884 | `	if( pTrace && (pTrace->iFlags & MEMOBJ_HASHMAP) && pTrace->x.pOther ){` |
+|     831 |  885 | `		pMap = (ph7_hashmap *)pTrace->x.pOther;` |
+|       - |  886 | `		/* Insertion order is pFirst then the pPrev chain (rule 12). */` |
+|    1745 |  887 | `		for( pEntry = pMap->pFirst ; pEntry ; pEntry = pEntry->pPrev ){` |
+|     919 |  888 | `			ph7_value *pFrameVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nValIdx);` |
+|       - |  889 | `			ph7_hashmap *pFrame;` |
+|       - |  890 | `			ph7_value *pFile;` |
+|     919 |  891 | `			if( pFrameVal == 0 \|\| (pFrameVal->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|     ! 0 |  892 | `				continue;` |
+|       - |  893 | `			}` |
+|     919 |  894 | `			pFrame = (ph7_hashmap *)pFrameVal->x.pOther;` |
+|     919 |  895 | `			SyBlobFormat(pOut,"#%u ",nFrame);` |
+|     919 |  896 | `			pFile = VmExcFrameField(&(*pVm),pFrame,"file");` |
+|    1337 |  897 | `			if( pFile && (pFile->iFlags & MEMOBJ_STRING) ){` |
+|     841 |  898 | `				ph7_value *pLine = VmExcFrameField(&(*pVm),pFrame,"line");` |
+|     841 |  899 | `				VmExcFrameStr(pOut,pFile);` |
+|    1677 |  900 | `				SyBlobFormat(pOut,"(%qd): ",` |
+|     836 |  901 | `					(pLine && (pLine->iFlags & MEMOBJ_INT)) ? pLine->x.iVal : (sxi64)0);` |
+|     423 |  902 | `			}else{` |
+|      82 |  903 | `				SyBlobAppend(pOut,"[internal function]: ",sizeof("[internal function]: ")-1);` |
+|       - |  904 | `			}` |
+|     919 |  905 | `			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"class"));` |
+|     919 |  906 | `			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"type"));` |
+|     919 |  907 | `			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"function"));` |
+|     919 |  908 | `			SyBlobAppend(pOut,"(",sizeof("(")-1);` |
+|       - |  909 | `			{` |
+|     919 |  910 | `				ph7_value *pArgs = VmExcFrameField(&(*pVm),pFrame,"args");` |
+|     919 |  911 | `				if( pArgs && (pArgs->iFlags & MEMOBJ_HASHMAP) && pArgs->x.pOther ){` |
+|     125 |  912 | `					ph7_hashmap *pArgMap = (ph7_hashmap *)pArgs->x.pOther;` |
+|       - |  913 | `					ph7_hashmap_node *pArg;` |
+|     125 |  914 | `					int bFirst = 1;` |
+|     369 |  915 | `					for( pArg = pArgMap->pFirst ; pArg ; pArg = pArg->pPrev ){` |
+|     247 |  916 | `						if( !bFirst ){` |
+|     135 |  917 | `							SyBlobAppend(pOut,", ",sizeof(", ")-1);` |
+|      66 |  918 | `						}` |
+|     247 |  919 | `						bFirst = 0;` |
+|     369 |  920 | `						VmExcTraceArg(&(*pVm),pOut,` |
+|     122 |  921 | `							(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pArg->nValIdx),nMax);` |
+|     125 |  922 | `					}` |
+|      61 |  923 | `				}` |
+|       - |  924 | `			}` |
+|     919 |  925 | `			SyBlobAppend(pOut,")\n",sizeof(")\n")-1);` |
+|     919 |  926 | `			nFrame++;` |
+|     462 |  927 | `		}` |
+|     413 |  928 | `	}` |
+|     831 |  929 | `	if( bMainMarker ){` |
+|       - |  930 | `		/* getTraceAsString() ends on the bottom marker; debug_print_backtrace()` |
+|       - |  931 | `		 * does not print one -- it stops after the last real frame. */` |
+|     787 |  932 | `		SyBlobFormat(pOut,"#%u {main}",nFrame);` |
+|     391 |  933 | `	}` |
+|     831 |  934 | `}` |
+|     724 |  935 | `static int vm_builtin_Exception_getTraceAsString(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  936 | `{` |
+|     729 |  937 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|       - |  938 | `	SyBlob sOut;` |
+|     362 |  939 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     729 |  940 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
+|     729 |  941 | `	PH7_VmTraceToString(pCtx->pVm,pThis ? PH7_NativeAttr(pThis,EXC_TRACE) : 0,TRUE,&sOut);` |
+|     729 |  942 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|     729 |  943 | `	SyBlobRelease(&sOut);` |
+|     729 |  944 | `	return PH7_OK;` |
+|       5 |  945 | `}` |
+|       - |  946 | `/*` |
+|       - |  947 | ` * php's Exception::__toString.` |
+|       - |  948 | ` *` |
+|       - |  949 | ` *    C: message in file:line` |
+|       - |  950 | ` *    Stack trace:` |
+|       - |  951 | ` *    <trace>` |
+|       - |  952 | ` *` |
+|       - |  953 | ` * The PREVIOUS chain is part of the format and the ORDER is inverted: php builds` |
+|       - |  954 | `` * the string innermost-first and joins the shallower ones after `\n\nNext `, so`` |
+|       - |  955 | ` * the root cause is printed first. The chunk answered a four-field space-joined` |
+|       - |  956 | `` * line instead — `file line code message` — which no php ever produced, and it is`` |
+|       - |  957 | `` * what an uncaught exception, `echo $e` and `(string)$e` all show.`` |
+|       - |  958 | ` *` |
+|       - |  959 | ` * The walk carries its ancestors on the C stack (rule 31): php protects each` |
+|       - |  960 | `` * object it visits and stops when it comes back round, and a `$a->previous = $b;`` |
+|       - |  961 | `` * $b->previous = $a` pair must not spin.`` |
+|       - |  962 | ` */` |
+|       - |  963 | `#define EXC_CHAIN_MAX 256` |
+|       8 |  964 | `static int vm_builtin_Exception_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       3 |  965 | `{` |
+|       - |  966 | `	ph7_class_instance *apChain[EXC_CHAIN_MAX];` |
+|      11 |  967 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|      11 |  968 | `	ph7_vm *pVm = pCtx->pVm;` |
+|       - |  969 | `	SyBlob sOut;` |
+|      11 |  970 | `	int nChain = 0;` |
+|       - |  971 | `	int i,j;` |
+|       4 |  972 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|      23 |  973 | `	while( pThis && nChain < EXC_CHAIN_MAX ){` |
+|       - |  974 | `		ph7_class_instance *pPrev;` |
+|      19 |  975 | `		for( j = 0 ; j < nChain ; j++ ){` |
+|       6 |  976 | `			if( apChain[j] == pThis ){` |
+|     ! 0 |  977 | `				pThis = 0;    /* already on the chain: php's recursion protection */` |
+|     ! 0 |  978 | `				break;` |
+|       - |  979 | `			}` |
+|       4 |  980 | `		}` |
+|      15 |  981 | `		if( pThis == 0 ){` |
+|     ! 0 |  982 | `			break;` |
+|       - |  983 | `		}` |
+|      15 |  984 | `		apChain[nChain++] = pThis;` |
+|      15 |  985 | `		pPrev = PH7_NativeAttrObj(pThis,EXC_PREVIOUS);` |
+|      15 |  986 | `		pThis = pPrev;` |
+|       3 |  987 | `	}` |
+|       - |  988 | `	/* php formats the SHALLOWEST first and pushes each one it has already built` |
+|       - |  989 | `	 * behind the next, so the printed order is inverted: the ROOT CAUSE leads and` |
+|       - |  990 | ``	 * every caller follows it after `\n\nNext `. */`` |
+|      11 |  991 | `	SyBlobInit(&sOut,&pVm->sAllocator);` |
+|      23 |  992 | `	for( i = 0 ; i < nChain ; i++ ){` |
+|      15 |  993 | `		ph7_class_instance *pExc = apChain[i];` |
+|      15 |  994 | `		ph7_value *pLine = PH7_NativeAttr(pExc,EXC_LINE);` |
+|       - |  995 | `		SyBlob sMsg;` |
+|       - |  996 | `		SyBlob sThis;` |
+|      15 |  997 | `		SyBlobInit(&sMsg,&pVm->sAllocator);` |
+|      15 |  998 | `		SyBlobInit(&sThis,&pVm->sAllocator);` |
+|      15 |  999 | `		VmExcValueStr(pVm,PH7_NativeAttr(pExc,EXC_MESSAGE),&sMsg);` |
+|       - | 1000 | `		/* php's one message rewrite: a TypeError/ArgumentCountError raised at a` |
+|       - | 1001 | `		 * CALL SITE says "..., called in F on line N", and __toString finishes the` |
+|       - | 1002 | `		 * sentence with " and defined". */` |
+|      12 | 1003 | `		if( VmExcIsArgError(pVm,pExc)` |
+|       9 | 1004 | `		 && VmExcBlobHas(&sMsg,", called in ",sizeof(", called in ")-1) ){` |
+|     ! 0 | 1005 | `			SyBlobAppend(&sMsg," and defined",sizeof(" and defined")-1);` |
+|     ! 0 | 1006 | `		}` |
+|      15 | 1007 | `		SyBlobFormat(&sThis,"%z",&pExc->pClass->sDisp);` |
+|      15 | 1008 | `		if( SyBlobLength(&sMsg) > 0 ){` |
+|      13 | 1009 | `			SyBlobAppend(&sThis,": ",sizeof(": ")-1);` |
+|      13 | 1010 | `			SyBlobAppend(&sThis,SyBlobData(&sMsg),SyBlobLength(&sMsg));` |
+|       5 | 1011 | `		}` |
+|      15 | 1012 | `		SyBlobAppend(&sThis," in ",sizeof(" in ")-1);` |
+|      15 | 1013 | `		VmExcFrameStr(&sThis,PH7_NativeAttr(pExc,EXC_FILE));` |
+|      21 | 1014 | `		SyBlobFormat(&sThis,":%qd\nStack trace:\n",` |
+|      12 | 1015 | `			(pLine && (pLine->iFlags & MEMOBJ_INT)) ? pLine->x.iVal : (sxi64)0);` |
+|      15 | 1016 | `		PH7_VmTraceToString(pVm,PH7_NativeAttr(pExc,EXC_TRACE),TRUE,&sThis);` |
+|      15 | 1017 | `		if( SyBlobLength(&sOut) > 0 ){` |
+|       6 | 1018 | `			SyBlobAppend(&sThis,"\n\nNext ",sizeof("\n\nNext ")-1);` |
+|       6 | 1019 | `			SyBlobAppend(&sThis,SyBlobData(&sOut),SyBlobLength(&sOut));` |
+|       2 | 1020 | `		}` |
+|      15 | 1021 | `		SyBlobReset(&sOut);` |
+|      15 | 1022 | `		SyBlobAppend(&sOut,SyBlobData(&sThis),SyBlobLength(&sThis));` |
+|      15 | 1023 | `		SyBlobRelease(&sMsg);` |
+|      15 | 1024 | `		SyBlobRelease(&sThis);` |
+|       9 | 1025 | `	}` |
+|      11 | 1026 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|      11 | 1027 | `	SyBlobRelease(&sOut);` |
+|      11 | 1028 | `	return PH7_OK;` |
+|       3 | 1029 | `}` |
+|       - | 1030 | `/*` |
+|       - | 1031 | ` * The declaration. php's two roots carry the same eleven methods and the same` |
+|       - | 1032 | `` * seven slots; the only difference php's stub records is `Error::$line`, which`` |
+|       - | 1033 | ` * has NO default where Exception's is 0.` |
+|       - | 1034 | ` *` |
+|       - | 1035 | `` * PH7_CLASS_NOCLONE on EVERY row: php refuses `clone $e` outright, and a native`` |
+|       - | 1036 | ` * subclass does not inherit its parent's class flags (rule 29).` |
+|       - | 1037 | ` */` |
+|       - | 1038 | `#define EXC_METHODS(zCtor,xCtor) \` |
+|       - | 1039 | `	{ "__clone",          PH7_MOD_PRIVATE, "", "void", vm_builtin_Exception_clone }, \` |
+|       - | 1040 | `	{ "__construct",      PH7_MOD_PUBLIC, zCtor, 0, xCtor }, \` |
+|       - | 1041 | `	{ "__wakeup",         PH7_MOD_PUBLIC, "", "@void", vm_builtin_Exception_wakeup }, \` |
+|       - | 1042 | `	{ "getMessage",       PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "string", \` |
+|       - | 1043 | `	  vm_builtin_Exception_getMessage }, \` |
+|       - | 1044 | `	{ "getCode",          PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", 0, \` |
+|       - | 1045 | `	  vm_builtin_Exception_getCode }, \` |
+|       - | 1046 | `	{ "getFile",          PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "string", \` |
+|       - | 1047 | `	  vm_builtin_Exception_getFile }, \` |
+|       - | 1048 | `	{ "getLine",          PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "int", \` |
+|       - | 1049 | `	  vm_builtin_Exception_getLine }, \` |
+|       - | 1050 | `	{ "getTrace",         PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "array", \` |
+|       - | 1051 | `	  vm_builtin_Exception_getTrace }, \` |
+|       - | 1052 | `	{ "getPrevious",      PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "?Throwable", \` |
+|       - | 1053 | `	  vm_builtin_Exception_getPrevious }, \` |
+|       - | 1054 | `	{ "getTraceAsString", PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "string", \` |
+|       - | 1055 | `	  vm_builtin_Exception_getTraceAsString }, \` |
+|       - | 1056 | `	{ "__toString",       PH7_MOD_PUBLIC, "", "string", vm_builtin_Exception_toString }` |
+|       - | 1057 | `#define EXC_CTOR_SIG "string $message = \"\", int $code = 0, ?Throwable $previous = null"` |
+|       - | 1058 | `/* php's seven slots, twice: the only difference between the two roots is` |
+|       - | 1059 | `` * `Error::$line`, which php's stub declares with NO default where Exception's is`` |
+|       - | 1060 | `` * 0 (`PH7_NATIVE_VAL_NONE` — its hasDefaultValue() is false and the export`` |
+|       - | 1061 | `` * prints `protected int $line` bare). `message` and `code` are the two php leaves`` |
+|       - | 1062 | ` * UNTYPED, and its stub says why: BC, since a subclass may have assigned` |
+|       - | 1063 | ` * anything to them. */` |
+|       - | 1064 | `#define EXC_PROP_HEAD \` |
+|       - | 1065 | `	{ EXC_MESSAGE,  PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 }, \` |
+|       - | 1066 | `	{ EXC_STRING,   PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" }, \` |
+|       - | 1067 | `	{ EXC_CODE,     PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 }, \` |
+|       - | 1068 | `	{ EXC_FILE,     PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" }` |
+|       - | 1069 | `#define EXC_PROP_TAIL \` |
+|       - | 1070 | `	{ EXC_TRACE,    PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_ARRAY, 0, 0, 0.0 }, "array" }, \` |
+|       - | 1071 | `	{ EXC_PREVIOUS, PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?Throwable" }` |
+|    8445 | 1072 | `static sxi32 VmInstallExceptions(ph7_vm *pVm)` |
+|       5 | 1073 | `{` |
+|       - | 1074 | `	static const PH7_NativeMethodDef aExcMethod[] = {` |
+|       - | 1075 | `		EXC_METHODS(EXC_CTOR_SIG,vm_builtin_Exception_construct)` |
+|       - | 1076 | `	};` |
+|       - | 1077 | `	static const PH7_NativePropDef aExcProp[] = {` |
+|       - | 1078 | `		EXC_PROP_HEAD,` |
+|       - | 1079 | `		{ EXC_LINE, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, "int" },` |
+|       - | 1080 | `		EXC_PROP_TAIL` |
+|       - | 1081 | `	};` |
+|       - | 1082 | `	static const PH7_NativePropDef aErrProp[] = {` |
+|       - | 1083 | `		EXC_PROP_HEAD,` |
+|       - | 1084 | `		{ EXC_LINE, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },` |
+|       - | 1085 | `		EXC_PROP_TAIL` |
+|       - | 1086 | `	};` |
+|       - | 1087 | `	static const PH7_NativePropDef aErrExcProp[] = {` |
+|       - | 1088 | `		{ EXC_SEVERITY, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 1, 0, 0.0 }, "int" },` |
+|       - | 1089 | `	};` |
+|       - | 1090 | `	static const PH7_NativeMethodDef aErrExcMethod[] = {` |
+|       - | 1091 | `		{ "__construct", PH7_MOD_PUBLIC,` |
+|       - | 1092 | `		  "string $message = \"\", int $code = 0, int $severity = E_ERROR, "` |
+|       - | 1093 | `		  "?string $filename = null, ?int $line = null, ?Throwable $previous = null", 0,` |
+|       - | 1094 | `		  vm_builtin_ErrorException_construct },` |
+|       - | 1095 | `		{ "getSeverity", PH7_MOD_PUBLIC\|PH7_MOD_FINAL, "", "int",` |
+|       - | 1096 | `		  vm_builtin_ErrorException_getSeverity },` |
+|       - | 1097 | `	};` |
+|       - | 1098 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|       - | 1099 | `		{ "Exception", 0, "Throwable", PH7_CLASS_NOCLONE,` |
+|       - | 1100 | `		  aExcMethod, SX_ARRAYSIZE(aExcMethod), 0, 0, aExcProp, SX_ARRAYSIZE(aExcProp), 0, 0, 0 },` |
+|       - | 1101 | `		{ "Error", 0, "Throwable", PH7_CLASS_NOCLONE,` |
+|       - | 1102 | `		  aExcMethod, SX_ARRAYSIZE(aExcMethod), 0, 0, aErrProp, SX_ARRAYSIZE(aErrProp), 0, 0, 0 },` |
+|       - | 1103 | `		/* Zend's own subclasses, then ErrorException, then SPL's tree. Every row is` |
+|       - | 1104 | `		 * declaration-only in php too. */` |
+|       - | 1105 | `		{ "TypeError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1106 | `		{ "ArgumentCountError", "TypeError", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1107 | `		{ "ValueError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1108 | `		{ "FiberError", "Error", 0,` |
+|       - | 1109 | `		  PH7_CLASS_FINAL\|PH7_CLASS_NOINSTANTIATE\|PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1110 | `		{ "AssertionError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1111 | `		{ "ArithmeticError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1112 | `		{ "DivisionByZeroError", "ArithmeticError", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1113 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1114 | `		{ "UnhandledMatchError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1115 | `		{ "CompileError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1116 | `		{ "ParseError", "CompileError", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1117 | `		{ "ErrorException", "Exception", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1118 | `		  aErrExcMethod, SX_ARRAYSIZE(aErrExcMethod), 0, 0,` |
+|       - | 1119 | `		  aErrExcProp, SX_ARRAYSIZE(aErrExcProp), 0, 0, 0 },` |
+|       - | 1120 | `		{ "LogicException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1121 | `		{ "RuntimeException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1122 | `		{ "BadFunctionCallException", "LogicException", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1123 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1124 | `		{ "BadMethodCallException", "BadFunctionCallException", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1125 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1126 | `		{ "DomainException", "LogicException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1127 | `		{ "InvalidArgumentException", "LogicException", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1128 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1129 | `		{ "LengthException", "LogicException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1130 | `		{ "OutOfRangeException", "LogicException", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1131 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1132 | `		{ "OutOfBoundsException", "RuntimeException", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1133 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1134 | `		{ "OverflowException", "RuntimeException", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1135 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1136 | `		{ "RangeException", "RuntimeException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1137 | `		{ "UnderflowException", "RuntimeException", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1138 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1139 | `		{ "UnexpectedValueException", "RuntimeException", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1140 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1141 | `		{ "JsonException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1142 | `	};` |
+|       - | 1143 | `	{` |
+|    8450 | 1144 | `		sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    8450 | 1145 | `		if( rc == SXRET_OK ){` |
+|       - | 1146 | ``			/* php refuses `new FiberError` -- the engine is the only thing that`` |
+|       - | 1147 | `			 * raises one -- and words the refusal per class. */` |
+|    8450 | 1148 | `			ph7_class *pFe = PH7_VmExtractClass(&(*pVm),"FiberError",` |
+|       - | 1149 | `				sizeof("FiberError")-1,FALSE,0);` |
+|    8450 | 1150 | `			if( pFe ){` |
+|    8450 | 1151 | `				pFe->zNewRefusal = "The \"FiberError\" class is reserved for internal use "` |
+|       - | 1152 | `					"and cannot be manually instantiated";` |
+|    4217 | 1153 | `			}` |
+|    4217 | 1154 | `		}` |
+|    8450 | 1155 | `		return rc;` |
+|       - | 1156 | `	}` |
+|       5 | 1157 | `}` |
+|       - | 1158 | `/*` |
+|       - | 1159 | ` * The eleven core interfaces, declared from C.` |
+|       - | 1160 | ` *` |
+|       - | 1161 | ` * They are contracts -- no method here has a body, every row is` |
+|       - | 1162 | ` * PH7_MOD_ABSTRACT -- so the conversion is entirely about what the DECLARATION` |
+|       - | 1163 | ` * says, which is where a chunk fell short in four php-visible ways:` |
+|       - | 1164 | ` *` |
+|       - | 1165 | `` *  - php's `interface Throwable extends Stringable`: the chunk redeclared`` |
+|       - | 1166 | ` *    __toString() on Throwable instead, so no Exception was ever Stringable` |
+|       - | 1167 | `` *    (`$e instanceof Stringable` was false, and Reflection attributed the`` |
+|       - | 1168 | `` *    method to Throwable rather than printing php's `inherits Stringable`);`` |
+|       - | 1169 | ` *  - php declares a RETURN TYPE on all but three of these methods and marks` |
+|       - | 1170 | `` *    nearly all of them TENTATIVE (the leading `@`, rule 45) -- a chunk has no`` |
+|       - | 1171 | ` *    way to say tentative at all;` |
+|       - | 1172 | `` *  - php's `mixed` on ArrayAccess's offsets, which the chunk left untyped;`` |
+|       - | 1173 | ` *  - method ORDER, which Reflection prints: php lists Throwable's getPrevious` |
+|       - | 1174 | ` *    before getTraceAsString, and Iterator's as current/next/key/valid/rewind.` |
+|       - | 1175 | ` *` |
+|       - | 1176 | ` * Order within the table is php's stub order too; the declare-then-link phases` |
+|       - | 1177 | ` * of PH7_InstallNativeClasses let Throwable name Stringable and Iterator name` |
+|       - | 1178 | `` * Traversable regardless of row order. An interface's parent is `zParent`, not`` |
+|       - | 1179 | `` * `zImplements` (Reflection walks pBase to attribute an inherited method).`` |
+|       - | 1180 | ` */` |
+|    8445 | 1181 | `static sxi32 VmInstallCoreInterfaces(ph7_vm *pVm)` |
+|       5 | 1182 | `{` |
+|       - | 1183 | `	static const PH7_NativeMethodDef aStringable[] = {` |
+|       - | 1184 | `		{ "__toString", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
+|       - | 1185 | `	};` |
+|       - | 1186 | `	static const PH7_NativeMethodDef aThrowable[] = {` |
+|       - | 1187 | `		/* Not one of these is tentative: php's Throwable is a real contract. */` |
+|       - | 1188 | `		{ "getMessage",       PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
+|       - | 1189 | `		{ "getCode",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", 0, 0 },` |
+|       - | 1190 | `		{ "getFile",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
+|       - | 1191 | `		{ "getLine",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "int", 0 },` |
+|       - | 1192 | `		{ "getTrace",         PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "array", 0 },` |
+|       - | 1193 | `		{ "getPrevious",      PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "?Throwable", 0 },` |
+|       - | 1194 | `		{ "getTraceAsString", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
+|       - | 1195 | `	};` |
+|       - | 1196 | `	static const PH7_NativeMethodDef aArrayAccess[] = {` |
+|       - | 1197 | `		{ "offsetExists", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "mixed $offset", "@bool", 0 },` |
+|       - | 1198 | `		{ "offsetGet",    PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "mixed $offset", "@mixed", 0 },` |
+|       - | 1199 | `		{ "offsetSet",    PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "mixed $offset, mixed $value",` |
+|       - | 1200 | `		  "@void", 0 },` |
+|       - | 1201 | `		{ "offsetUnset",  PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "mixed $offset", "@void", 0 },` |
+|       - | 1202 | `	};` |
+|       - | 1203 | `	static const PH7_NativeMethodDef aCountable[] = {` |
+|       - | 1204 | `		{ "count", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@int", 0 },` |
+|       - | 1205 | `	};` |
+|       - | 1206 | `	static const PH7_NativeMethodDef aJsonSerializable[] = {` |
+|       - | 1207 | `		{ "jsonSerialize", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@mixed", 0 },` |
+|       - | 1208 | `	};` |
+|       - | 1209 | `	/* The concrete cases()/from()/tryFrom() an enum gets are native methods` |
+|       - | 1210 | `	 * declared to match these (oo_native.c, PH7_InstallEnumInterfaceMethods). */` |
+|       - | 1211 | `	static const PH7_NativeMethodDef aUnitEnum[] = {` |
+|       - | 1212 | `		{ "cases", PH7_MOD_PUBLIC\|PH7_MOD_STATIC\|PH7_MOD_ABSTRACT, "", "array", 0 },` |
+|       - | 1213 | `	};` |
+|       - | 1214 | `	static const PH7_NativeMethodDef aBackedEnum[] = {` |
+|       - | 1215 | `		{ "from",    PH7_MOD_PUBLIC\|PH7_MOD_STATIC\|PH7_MOD_ABSTRACT, "string\|int $value",` |
+|       - | 1216 | `		  "static", 0 },` |
+|       - | 1217 | `		{ "tryFrom", PH7_MOD_PUBLIC\|PH7_MOD_STATIC\|PH7_MOD_ABSTRACT, "string\|int $value",` |
+|       - | 1218 | `		  "?static", 0 },` |
+|       - | 1219 | `	};` |
+|       - | 1220 | `	static const PH7_NativeMethodDef aIterator[] = {` |
+|       - | 1221 | `		{ "current", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@mixed", 0 },` |
+|       - | 1222 | `		{ "next",    PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@void", 0 },` |
+|       - | 1223 | `		{ "key",     PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@mixed", 0 },` |
+|       - | 1224 | `		{ "valid",   PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@bool", 0 },` |
+|       - | 1225 | `		{ "rewind",  PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@void", 0 },` |
+|       - | 1226 | `	};` |
+|       - | 1227 | `	static const PH7_NativeMethodDef aIteratorAggregate[] = {` |
+|       - | 1228 | `		{ "getIterator", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@Traversable", 0 },` |
+|       - | 1229 | `	};` |
+|       - | 1230 | `	/* php's legacy Serializable declares NO return type on either method. */` |
+|       - | 1231 | `	static const PH7_NativeMethodDef aSerializable[] = {` |
+|       - | 1232 | `		{ "serialize",   PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", 0, 0 },` |
+|       - | 1233 | `		{ "unserialize", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "string $data", 0, 0 },` |
+|       - | 1234 | `	};` |
+|       - | 1235 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|       - | 1236 | `		{ "Traversable", 0, 0, PH7_CLASS_INTERFACE,` |
+|       - | 1237 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1238 | `		{ "Stringable", 0, 0, PH7_CLASS_INTERFACE,` |
+|       - | 1239 | `		  aStringable, SX_ARRAYSIZE(aStringable), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1240 | `		{ "Throwable", "Stringable", 0, PH7_CLASS_INTERFACE,` |
+|       - | 1241 | `		  aThrowable, SX_ARRAYSIZE(aThrowable), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1242 | `		{ "ArrayAccess", 0, 0, PH7_CLASS_INTERFACE,` |
+|       - | 1243 | `		  aArrayAccess, SX_ARRAYSIZE(aArrayAccess), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1244 | `		{ "Countable", 0, 0, PH7_CLASS_INTERFACE,` |
+|       - | 1245 | `		  aCountable, SX_ARRAYSIZE(aCountable), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1246 | `		{ "JsonSerializable", 0, 0, PH7_CLASS_INTERFACE,` |
+|       - | 1247 | `		  aJsonSerializable, SX_ARRAYSIZE(aJsonSerializable), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1248 | `		{ "UnitEnum", 0, 0, PH7_CLASS_INTERFACE,` |
+|       - | 1249 | `		  aUnitEnum, SX_ARRAYSIZE(aUnitEnum), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1250 | `		{ "BackedEnum", "UnitEnum", 0, PH7_CLASS_INTERFACE,` |
+|       - | 1251 | `		  aBackedEnum, SX_ARRAYSIZE(aBackedEnum), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1252 | `		{ "Iterator", "Traversable", 0, PH7_CLASS_INTERFACE,` |
+|       - | 1253 | `		  aIterator, SX_ARRAYSIZE(aIterator), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1254 | `		{ "IteratorAggregate", "Traversable", 0, PH7_CLASS_INTERFACE,` |
+|       - | 1255 | `		  aIteratorAggregate, SX_ARRAYSIZE(aIteratorAggregate), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1256 | `		{ "Serializable", 0, 0, PH7_CLASS_INTERFACE,` |
+|       - | 1257 | `		  aSerializable, SX_ARRAYSIZE(aSerializable), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1258 | `	};` |
+|    8450 | 1259 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|       5 | 1260 | `}` |
+|       - | 1261 | `/*` |
+|       - | 1262 | ` * ---------------------------------------------------------------------------` |
+|       - | 1263 | `` * php's Directory — the object `dir()` answers.`` |
+|       - | 1264 | ` *` |
+|       - | 1265 | ` * php declares it FINAL with **no constructor at all**: the class is created by` |
+|       - | 1266 | `` * `dir()` and `new Directory` is refused in the create_object handler, with a`` |
+|       - | 1267 | ` * sentence that names dir() as the way to get one. Its two slots are` |
+|       - | 1268 | `` * `public protected(set) readonly`, so a script can read `$d->path` and never`` |
+|       - | 1269 | `` * write it, and its three methods declare return types (`read(): string\|false`).`` |
+|       - | 1270 | ` * The chunk had a public constructor, a __destruct php does not declare, no` |
+|       - | 1271 | ` * types anywhere and writable slots.` |
+|       - | 1272 | ` * ---------------------------------------------------------------------------` |
+|       - | 1273 | ` */` |
+|       - | 1274 | `#define DIR_HANDLE "handle"` |
+|       - | 1275 | `#define DIR_PATH   "path"` |
+|       - | 1276 | `/*` |
+|       - | 1277 | ` * Forward one method to the engine's own directory builtin (rule 7: call, don't` |
+|       - | 1278 | `` * reimplement). php's Directory methods are `php_stream_readdir(...)` on the very`` |
+|       - | 1279 | `` * stream `readdir()` uses, and a CLOSED handle is a TypeError there — the one`` |
+|       - | 1280 | ` * place php's wording names the class rather than the function.` |
+|       - | 1281 | ` */` |
+|      40 | 1282 | `static int VmDirClosed(ph7_value *pHandle)` |
+|       2 | 1283 | `{` |
+|      42 | 1284 | `	io_private *pDev = (io_private *)pHandle->x.pOther;` |
+|      42 | 1285 | `	return IO_PRIVATE_INVALID(pDev);` |
+|       2 | 1286 | `}` |
+|      40 | 1287 | `static int VmDirForward(ph7_context *pCtx,const char *zFunc,const char *zMethod)` |
+|       2 | 1288 | `{` |
+|      42 | 1289 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|      42 | 1290 | `	ph7_value *pHandle = pThis ? PH7_NativeAttr(pThis,DIR_HANDLE) : 0;` |
+|       - | 1291 | `	ph7_value *apArg[1];` |
+|       - | 1292 | `	ph7_value sResult;` |
+|       - | 1293 | `	ph7_value sName;` |
+|       - | 1294 | `	SyString sStr;` |
+|       - | 1295 | `	sxi32 rc;` |
+|       - | 1296 | ``	/* php's check is `php_stream_from_zval` on a stream it CLOSED: closedir()`` |
+|       - | 1297 | `	 * keeps the resource alive and marks it (gettype() answers` |
+|       - | 1298 | `	 * "resource (closed)"), so the test is the magic, not the type. */` |
+|      40 | 1299 | `	if( pHandle == 0 \|\| (pHandle->iFlags & MEMOBJ_RES) == 0` |
+|      42 | 1300 | `	 \|\| VmDirClosed(pHandle) ){` |
+|      10 | 1301 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|       - | 1302 | `			"Directory::%s(): cannot use Directory resource after it has been closed",` |
+|       3 | 1303 | `			zMethod);` |
+|       - | 1304 | `	}` |
+|      36 | 1305 | `	SyStringInitFromBuf(&sStr,zFunc,SyStrlen(zFunc));` |
+|      36 | 1306 | `	PH7_MemObjInit(pCtx->pVm,&sName);` |
+|      36 | 1307 | `	PH7_MemObjInitFromString(pCtx->pVm,&sName,&sStr);` |
+|      36 | 1308 | `	PH7_MemObjInit(pCtx->pVm,&sResult);` |
+|      36 | 1309 | `	apArg[0] = pHandle;` |
+|      36 | 1310 | `	rc = PH7_VmCallUserFunction(pCtx->pVm,&sName,1,apArg,&sResult);` |
+|      36 | 1311 | `	PH7_MemObjRelease(&sName);` |
+|      36 | 1312 | `	if( rc == SXRET_OK ){` |
+|      36 | 1313 | `		ph7_result_value(pCtx,&sResult);` |
+|      17 | 1314 | `	}` |
+|      36 | 1315 | `	PH7_MemObjRelease(&sResult);` |
+|      36 | 1316 | `	return PH7_OK;` |
+|      22 | 1317 | `}` |
+|      28 | 1318 | `static int vm_builtin_Directory_read(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       2 | 1319 | `{` |
+|      14 | 1320 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|      30 | 1321 | `	return VmDirForward(pCtx,"readdir","read");` |
+|       2 | 1322 | `}` |
+|       4 | 1323 | `static int vm_builtin_Directory_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1324 | `{` |
+|       2 | 1325 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|       5 | 1326 | `	return VmDirForward(pCtx,"rewinddir","rewind");` |
+|       1 | 1327 | `}` |
+|       8 | 1328 | `static int vm_builtin_Directory_close(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       2 | 1329 | `{` |
+|       4 | 1330 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|      10 | 1331 | `	return VmDirForward(pCtx,"closedir","close");` |
+|       2 | 1332 | `}` |
+|    8445 | 1333 | `static sxi32 VmInstallDirectory(ph7_vm *pVm)` |
+|       5 | 1334 | `{` |
+|       - | 1335 | `	static const PH7_NativePropDef aDirProp[] = {` |
+|       - | 1336 | `		{ DIR_PATH,   PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
+|       - | 1337 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },` |
+|       - | 1338 | `		{ DIR_HANDLE, PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
+|       - | 1339 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "mixed" },` |
+|       - | 1340 | `	};` |
+|       - | 1341 | `	static const PH7_NativeMethodDef aDirMethod[] = {` |
+|       - | 1342 | `		{ "close",  PH7_MOD_PUBLIC, "", "void", vm_builtin_Directory_close },` |
+|       - | 1343 | `		{ "rewind", PH7_MOD_PUBLIC, "", "void", vm_builtin_Directory_rewind },` |
+|       - | 1344 | `		{ "read",   PH7_MOD_PUBLIC, "", "string\|false", vm_builtin_Directory_read },` |
+|       - | 1345 | `	};` |
+|       - | 1346 | `	static const PH7_NativeClassSpec sSpec = {` |
+|       - | 1347 | `		"Directory", 0, 0, PH7_CLASS_FINAL\|PH7_CLASS_NOINSTANTIATE,` |
+|       - | 1348 | `		aDirMethod, SX_ARRAYSIZE(aDirMethod), 0, 0,` |
+|       - | 1349 | `		aDirProp, SX_ARRAYSIZE(aDirProp), 0, 0, 0` |
+|       - | 1350 | `	};` |
+|    8450 | 1351 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|    8450 | 1352 | `	if( rc == SXRET_OK ){` |
+|    8450 | 1353 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Directory",sizeof("Directory")-1,FALSE,0);` |
+|    8450 | 1354 | `		if( pClass ){` |
+|       - | 1355 | `			/* php words this refusal per class rather than with the generic` |
+|       - | 1356 | `			 * "Instantiation of class %s is not allowed". */` |
+|    8450 | 1357 | `			pClass->zNewRefusal = "Cannot directly construct Directory, use dir() instead";` |
+|    4217 | 1358 | `		}` |
+|    4217 | 1359 | `	}` |
+|    8450 | 1360 | `	return rc;` |
+|       5 | 1361 | `}` |
+|       - | 1362 | `/*` |
+|       - | 1363 | ` * ---------------------------------------------------------------------------` |
+|       - | 1364 | ` * php's attribute classes.` |
+|       - | 1365 | ` *` |
+|       - | 1366 | ``  * Each carries an ATTRIBUTE of its own — `#[Attribute(Attribute::TARGET_CLASS)]` `` |
+|       - | 1367 | ` * on Attribute, a target mask on every other one — and those records are` |
+|       - | 1368 | ` * load-bearing rather than decorative: the engine reads them to decide whether a` |
+|       - | 1369 | `` * user's `#[Deprecated]` may sit where it does, and ReflectionAttribute answers`` |
+|       - | 1370 | ` * them. A compiled attribute holds its argument as byte-code, so this is what` |
+|       - | 1371 | `` * `PH7_NativeClassAddAttribute()` exists for (rule 11's next unused corner,`` |
+|       - | 1372 | ` * exercised here): the argument rides as a literal.` |
+|       - | 1373 | ` *` |
+|       - | 1374 | ` * php's Deprecated mask is 87 — TARGET_CLASS\|FUNCTION\|METHOD\|CLASS_CONSTANT\|` |
+|       - | 1375 | ` * CONSTANT — where the chunk wrote 86 and left the CLASS bit out.` |
+|       - | 1376 | ` *` |
+|       - | 1377 | ` * Three of them declare NOTHING but their own mask, because what they mean is a` |
+|       - | 1378 | `` * question something else asks: `#[AllowDynamicProperties]` is read by the`` |
+|       - | 1379 | `` * dynamic-property decision at the write site, `#[SensitiveParameter]` by the`` |
+|       - | 1380 | `` * backtrace builder, `#[ReturnTypeWillChange]` by php's tentative-return-type`` |
+|       - | 1381 | ` * check (which the scope policy non-deprecated policy removed, so nothing consults it` |
+|       - | 1382 | ` * here). They still have to EXIST: a program that spells one and then asks` |
+|       - | 1383 | `` * `getAttributes()[0]->newInstance()` gets php's object, not`` |
+|       - | 1384 | `` * `Attribute class "AllowDynamicProperties" not found`.`` |
+|       - | 1385 | ` *` |
+|       - | 1386 | `` * `SensitiveParameterValue` is not an attribute at all — it is the box php puts`` |
+|       - | 1387 | ` * a redacted argument in — but it belongs to the same feature and to the same` |
+|       - | 1388 | ` * declaration site.` |
+|       - | 1389 | ` * ---------------------------------------------------------------------------` |
+|       - | 1390 | ` */` |
+|       - | 1391 | ``/* php declares `public function __construct()` on the three marker attributes, so`` |
+|       - | 1392 | `` * Reflection reports one and `new AllowDynamicProperties(1)` is an`` |
+|       - | 1393 | ` * ArgumentCountError. The body has nothing to do: the object carries no state. */` |
+|      10 | 1394 | `static int vm_builtin_AttrMarker_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       2 | 1395 | `{` |
+|       5 | 1396 | `	SXUNUSED(pCtx);` |
+|       5 | 1397 | `	SXUNUSED(nArg);` |
+|       5 | 1398 | `	SXUNUSED(apArg);` |
+|      12 | 1399 | `	return PH7_OK;` |
+|       2 | 1400 | `}` |
+|       - | 1401 | `/* SensitiveParameterValue::__construct(mixed $value) / getValue() / __debugInfo() */` |
+|       - | 1402 | `#define SPV_SLOT "value"` |
+|      20 | 1403 | `static int vm_builtin_SensitiveParameterValue_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1404 | `{` |
+|      21 | 1405 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|      21 | 1406 | `	if( pThis && nArg > 0 ){` |
+|      21 | 1407 | `		PH7_NativeSetProp(pCtx->pVm,pThis,SPV_SLOT,sizeof(SPV_SLOT)-1,apArg[0]);` |
+|      10 | 1408 | `	}` |
+|      21 | 1409 | `	return PH7_OK;` |
+|       1 | 1410 | `}` |
+|       6 | 1411 | `static int vm_builtin_SensitiveParameterValue_getValue(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1412 | `{` |
+|       7 | 1413 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|       7 | 1414 | `	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,SPV_SLOT) : 0;` |
+|       3 | 1415 | `	SXUNUSED(nArg);` |
+|       3 | 1416 | `	SXUNUSED(apArg);` |
+|       7 | 1417 | `	if( pVal ){` |
+|       7 | 1418 | `		ph7_result_value(pCtx,pVal);` |
+|       4 | 1419 | `	}else{` |
+|     ! 0 | 1420 | `		ph7_result_null(pCtx);` |
+|       - | 1421 | `	}` |
+|       7 | 1422 | `	return PH7_OK;` |
+|       1 | 1423 | `}` |
+|       2 | 1424 | `static int vm_builtin_SensitiveParameterValue_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1425 | `{` |
+|       3 | 1426 | `	ph7_value *pOut = ph7_context_new_array(pCtx);` |
+|       1 | 1427 | `	SXUNUSED(nArg);` |
+|       1 | 1428 | `	SXUNUSED(apArg);` |
+|       3 | 1429 | `	if( pOut == 0 ){` |
+|     ! 0 | 1430 | `		return PH7_ContextMemoryError(pCtx);` |
+|       - | 1431 | `	}` |
+|       3 | 1432 | `	ph7_result_value(pCtx,pOut);` |
+|       3 | 1433 | `	return PH7_OK;` |
+|       2 | 1434 | `}` |
+|       - | 1435 | `/*` |
+|       - | 1436 | `` * php gives the class a `get_properties_for` handler that answers NULL for every`` |
+|       - | 1437 | `` * purpose, so the box shows nothing to var_export, the `(array)` cast or`` |
+|       - | 1438 | `` * json_encode either — not just to var_dump's `__debugInfo()`. The point of the`` |
+|       - | 1439 | ` * class is that the value it holds does not leak onto a display surface.` |
+|       - | 1440 | ` */` |
+|       6 | 1441 | `static sxi32 VmPresentSensitiveParameterValue(ph7_vm *pVm,ph7_class_instance *pThis,` |
+|       - | 1442 | `	ph7_value *pOut,int bDebug)` |
+|       1 | 1443 | `{` |
+|       3 | 1444 | `	SXUNUSED(pVm);` |
+|       3 | 1445 | `	SXUNUSED(pThis);` |
+|       3 | 1446 | `	SXUNUSED(pOut);` |
+|       3 | 1447 | `	SXUNUSED(bDebug);` |
+|       7 | 1448 | `	return SXRET_OK;   /* the empty shape, both handlers */` |
+|       1 | 1449 | `}` |
+|       8 | 1450 | `static int vm_builtin_Attribute_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1451 | `{` |
+|       9 | 1452 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|       9 | 1453 | `	if( pThis ){` |
+|      16 | 1454 | `		PH7_NativeSetAttrInt(pCtx->pVm,pThis,"flags",` |
+|       7 | 1455 | `			nArg > 0 ? ph7_value_to_int64(apArg[0]) : 127);` |
+|       4 | 1456 | `	}` |
+|       9 | 1457 | `	return PH7_OK;` |
+|       1 | 1458 | `}` |
+|       - | 1459 | `/* NoDiscard::__construct(?string $message = null) */` |
+|       2 | 1460 | `static int vm_builtin_NoDiscard_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1461 | `{` |
+|       3 | 1462 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|       - | 1463 | `	ph7_value sVal;` |
+|       3 | 1464 | `	if( pThis == 0 ){` |
+|     ! 0 | 1465 | `		return PH7_OK;` |
+|       - | 1466 | `	}` |
+|       3 | 1467 | `	PH7_MemObjInit(pCtx->pVm,&sVal);` |
+|       3 | 1468 | `	if( nArg > 0 ){` |
+|     ! 0 | 1469 | `		PH7_MemObjStore(apArg[0],&sVal);` |
+|     ! 0 | 1470 | `	}` |
+|       3 | 1471 | `	PH7_NativeSetProp(pCtx->pVm,pThis,"message",sizeof("message")-1,&sVal);` |
+|       3 | 1472 | `	PH7_MemObjRelease(&sVal);` |
+|       3 | 1473 | `	return PH7_OK;` |
+|       2 | 1474 | `}` |
+|      10 | 1475 | `static int vm_builtin_Deprecated_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1476 | `{` |
+|      11 | 1477 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|       - | 1478 | `	static const char *const azSlot[] = { "message", "since" };` |
+|       - | 1479 | `	int n;` |
+|      11 | 1480 | `	if( pThis == 0 ){` |
+|     ! 0 | 1481 | `		return PH7_OK;` |
+|       - | 1482 | `	}` |
+|      31 | 1483 | `	for( n = 0 ; n < 2 ; n++ ){` |
+|       - | 1484 | `		ph7_value sVal;` |
+|      21 | 1485 | `		PH7_MemObjInit(pCtx->pVm,&sVal);` |
+|      21 | 1486 | `		if( n < nArg ){` |
+|      15 | 1487 | `			PH7_MemObjStore(apArg[n],&sVal);` |
+|       7 | 1488 | `		}` |
+|      21 | 1489 | `		PH7_NativeSetProp(pCtx->pVm,pThis,azSlot[n],SyStrlen(azSlot[n]),&sVal);` |
+|      21 | 1490 | `		PH7_MemObjRelease(&sVal);` |
+|      11 | 1491 | `	}` |
+|      11 | 1492 | `	return PH7_OK;` |
+|       6 | 1493 | `}` |
+|    8445 | 1494 | `static sxi32 VmInstallAttributes(ph7_vm *pVm)` |
+|       5 | 1495 | `{` |
+|       - | 1496 | `	static const PH7_NativeConstDef aAttrConst[] = {` |
+|       - | 1497 | `		{ "TARGET_CLASS",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },` |
+|       - | 1498 | `		{ "TARGET_FUNCTION",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },` |
+|       - | 1499 | `		{ "TARGET_METHOD",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 4, 0, 0.0 },` |
+|       - | 1500 | `		{ "TARGET_PROPERTY",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 8, 0, 0.0 },` |
+|       - | 1501 | `		{ "TARGET_CLASS_CONSTANT", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16, 0, 0.0 },` |
+|       - | 1502 | `		{ "TARGET_PARAMETER",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 32, 0, 0.0 },` |
+|       - | 1503 | `		{ "TARGET_CONSTANT",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 64, 0, 0.0 },` |
+|       - | 1504 | `		{ "TARGET_ALL",            PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 127, 0, 0.0 },` |
+|       - | 1505 | `		{ "IS_REPEATABLE",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 128, 0, 0.0 },` |
+|       - | 1506 | `	};` |
+|       - | 1507 | ``	/* php declares `public int $flags;` — typed, NO default (the constructor is`` |
+|       - | 1508 | ``	 * the only writer), which is what the chunk's `public $flags;` could not say. */`` |
+|       - | 1509 | `	static const PH7_NativePropDef aAttrProp[] = {` |
+|       - | 1510 | `		{ "flags", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },` |
+|       - | 1511 | `	};` |
+|       - | 1512 | `	static const PH7_NativeMethodDef aAttrMethod[] = {` |
+|       - | 1513 | `		{ "__construct", PH7_MOD_PUBLIC, "int $flags = Attribute::TARGET_ALL", 0,` |
+|       - | 1514 | `		  vm_builtin_Attribute_construct },` |
+|       - | 1515 | `	};` |
+|       - | 1516 | `	static const PH7_NativePropDef aDepProp[] = {` |
+|       - | 1517 | `		{ "message", PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
+|       - | 1518 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },` |
+|       - | 1519 | `		{ "since",   PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
+|       - | 1520 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },` |
+|       - | 1521 | `	};` |
+|       - | 1522 | `	static const PH7_NativeMethodDef aDepMethod[] = {` |
+|       - | 1523 | `		{ "__construct", PH7_MOD_PUBLIC, "?string $message = null, ?string $since = null", 0,` |
+|       - | 1524 | `		  vm_builtin_Deprecated_construct },` |
+|       - | 1525 | `	};` |
+|       - | 1526 | ``	/* NoDiscard is Deprecated's shape minus the `since`. */`` |
+|       - | 1527 | `	static const PH7_NativePropDef aNdProp[] = {` |
+|       - | 1528 | `		{ "message", PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
+|       - | 1529 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },` |
+|       - | 1530 | `	};` |
+|       - | 1531 | `	static const PH7_NativeMethodDef aNdMethod[] = {` |
+|       - | 1532 | `		{ "__construct", PH7_MOD_PUBLIC, "?string $message = null", 0,` |
+|       - | 1533 | `		  vm_builtin_NoDiscard_construct },` |
+|       - | 1534 | `	};` |
+|       - | 1535 | `	/* The three markers: one argless constructor each and no state at all. */` |
+|       - | 1536 | `	static const PH7_NativeMethodDef aMarkerMethod[] = {` |
+|       - | 1537 | `		{ "__construct", PH7_MOD_PUBLIC, "", 0, vm_builtin_AttrMarker_construct },` |
+|       - | 1538 | `	};` |
+|       - | 1539 | `	static const PH7_NativePropDef aSpvProp[] = {` |
+|       - | 1540 | `		{ SPV_SLOT, PH7_MOD_PRIVATE\|PH7_MOD_READONLY,` |
+|       - | 1541 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "mixed" },` |
+|       - | 1542 | `	};` |
+|       - | 1543 | `	static const PH7_NativeMethodDef aSpvMethod[] = {` |
+|       - | 1544 | `		{ "__construct", PH7_MOD_PUBLIC, "mixed $value", 0,` |
+|       - | 1545 | `		  vm_builtin_SensitiveParameterValue_construct },` |
+|       - | 1546 | `		{ "getValue",    PH7_MOD_PUBLIC, "", "mixed",` |
+|       - | 1547 | `		  vm_builtin_SensitiveParameterValue_getValue },` |
+|       - | 1548 | `		{ "__debugInfo", PH7_MOD_PUBLIC, "", "array",` |
+|       - | 1549 | `		  vm_builtin_SensitiveParameterValue_debugInfo },` |
+|       - | 1550 | `	};` |
+|       - | 1551 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|       - | 1552 | `		{ "Attribute", 0, 0, PH7_CLASS_FINAL,` |
+|       - | 1553 | `		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), aAttrConst, SX_ARRAYSIZE(aAttrConst),` |
+|       - | 1554 | `		  aAttrProp, SX_ARRAYSIZE(aAttrProp), 0, 0, 0 },` |
+|       - | 1555 | `		{ "Deprecated", 0, 0, PH7_CLASS_FINAL,` |
+|       - | 1556 | `		  aDepMethod, SX_ARRAYSIZE(aDepMethod), 0, 0,` |
+|       - | 1557 | `		  aDepProp, SX_ARRAYSIZE(aDepProp), 0, 0, 0 },` |
+|       - | 1558 | `		{ "AllowDynamicProperties", 0, 0, PH7_CLASS_FINAL,` |
+|       - | 1559 | `		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1560 | `		{ "SensitiveParameter", 0, 0, PH7_CLASS_FINAL,` |
+|       - | 1561 | `		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1562 | `		{ "ReturnTypeWillChange", 0, 0, PH7_CLASS_FINAL,` |
+|       - | 1563 | `		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1564 | `		{ "Override", 0, 0, PH7_CLASS_FINAL,` |
+|       - | 1565 | `		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1566 | `		{ "NoDiscard", 0, 0, PH7_CLASS_FINAL,` |
+|       - | 1567 | `		  aNdMethod, SX_ARRAYSIZE(aNdMethod), 0, 0,` |
+|       - | 1568 | `		  aNdProp, SX_ARRAYSIZE(aNdProp), 0, 0, 0 },` |
+|       - | 1569 | `		/* php 8.5's marker for an attribute whose TARGET is checked late. It is` |
+|       - | 1570 | `		 * the one attribute class php declares with no constructor at all --` |
+|       - | 1571 | `		 * every other marker here has the empty one -- so a script writes it` |
+|       - | 1572 | ``		 * bare and `newInstance()` builds it with nothing. */`` |
+|       - | 1573 | `		{ "DelayedTargetValidation", 0, 0, PH7_CLASS_FINAL,` |
+|       - | 1574 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1575 | `		/* php refuses BOTH directions for the box (ZEND_ACC_NOT_SERIALIZABLE), which` |
+|       - | 1576 | `		 * is the whole point: a redacted value must not reach a payload either. */` |
+|       - | 1577 | `		{ "SensitiveParameterValue", 0, 0, PH7_CLASS_FINAL\|PH7_CLASS_NOSERIALIZE,` |
+|       - | 1578 | `		  aSpvMethod, SX_ARRAYSIZE(aSpvMethod), 0, 0,` |
+|       - | 1579 | `		  aSpvProp, SX_ARRAYSIZE(aSpvProp), 0, 0,` |
+|       - | 1580 | `		  VmPresentSensitiveParameterValue },` |
+|       - | 1581 | `	};` |
+|       - | 1582 | ``	/* Each attribute class's own `#[Attribute(mask)]`, php's masks verbatim. The`` |
+|       - | 1583 | `	 * literal rows are STATIC because PH7_NativeClassAddAttribute keeps a pointer` |
+|       - | 1584 | `	 * to them for the VM's lifetime. */` |
+|       - | 1585 | `	static const PH7_NativeAttrArg aMaskClass[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 1,  0, 0.0 } } };` |
+|       - | 1586 | `	static const PH7_NativeAttrArg aMaskDep[]    = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 87, 0, 0.0 } } };` |
+|       - | 1587 | `	static const PH7_NativeAttrArg aMaskParam[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 32, 0, 0.0 } } };` |
+|       - | 1588 | `	static const PH7_NativeAttrArg aMaskMethod[] = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 4,  0, 0.0 } } };` |
+|       - | 1589 | `	static const PH7_NativeAttrArg aMaskMembr[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 12, 0, 0.0 } } };` |
+|       - | 1590 | `	static const PH7_NativeAttrArg aMaskCallee[] = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 6,  0, 0.0 } } };` |
+|       - | 1591 | `	static const PH7_NativeAttrArg aMaskAll[]    = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 127,0, 0.0 } } };` |
+|       - | 1592 | `	static const struct {` |
+|       - | 1593 | `		const char *zClass;` |
+|       - | 1594 | `		const PH7_NativeAttrArg *aArg;   /* php's TARGET_* mask for that class */` |
+|       - | 1595 | `	} aOwnAttr[] = {` |
+|       - | 1596 | `		{ "Attribute",              aMaskClass  },   /* TARGET_CLASS */` |
+|       - | 1597 | `		{ "Deprecated",             aMaskDep    },   /* CLASS\|FUNCTION\|METHOD\|CLASS_CONSTANT\|CONSTANT */` |
+|       - | 1598 | `		{ "AllowDynamicProperties", aMaskClass  },   /* TARGET_CLASS */` |
+|       - | 1599 | `		{ "SensitiveParameter",     aMaskParam  },   /* TARGET_PARAMETER */` |
+|       - | 1600 | `		{ "ReturnTypeWillChange",   aMaskMethod },   /* TARGET_METHOD */` |
+|       - | 1601 | `		{ "Override",               aMaskMembr  },   /* METHOD\|PROPERTY (php 8.5) */` |
+|       - | 1602 | `		{ "NoDiscard",              aMaskCallee },   /* FUNCTION\|METHOD (php 8.5) */` |
+|       - | 1603 | `		{ "DelayedTargetValidation", aMaskAll   },   /* TARGET_ALL (php 8.5) */` |
+|       - | 1604 | `	};` |
+|    8450 | 1605 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|       - | 1606 | `	sxu32 n;` |
+|   76010 | 1607 | `	for( n = 0 ; rc == SXRET_OK && n < SX_ARRAYSIZE(aOwnAttr) ; ++n ){` |
+|  101301 | 1608 | `		rc = PH7_NativeClassAddAttribute(&(*pVm),` |
+|  101296 | 1609 | `			PH7_VmExtractClass(&(*pVm),aOwnAttr[n].zClass,` |
+|   67560 | 1610 | `				(sxu32)SyStrlen(aOwnAttr[n].zClass),FALSE,0),` |
+|   67560 | 1611 | `			"Attribute",aOwnAttr[n].aArg,1);` |
+|   33741 | 1612 | `	}` |
+|    8450 | 1613 | `	return rc;` |
+|       5 | 1614 | `}` |
+|       - | 1615 | `/*` |
+|       - | 1616 | ` * stdClass and Random\RandomException.` |
+|       - | 1617 | ` *` |
+|       - | 1618 | ` * stdClass is EMPTY in php too — it holds only dynamic properties — so the whole` |
+|       - | 1619 | `` * declaration is the row. `Random\RandomException` is the first NAMESPACED class`` |
+|       - | 1620 | ` * declared from C: the engine keys its class table by the FULLY QUALIFIED name` |
+|       - | 1621 | `` * (the compiler resolves `namespace Random { class RandomException }` to exactly`` |
+|       - | 1622 | ` * this string before installing), so a spec row spells the FQN and needs no` |
+|       - | 1623 | ` * namespace machinery at all. It also retires the chunk this file kept ALONE for` |
+|       - | 1624 | `` * it, whose comment explains why: a `namespace` declaration is not reset at its`` |
+|       - | 1625 | ` * closing brace here, so anything following it in the same chunk would have` |
+|       - | 1626 | ` * leaked into the Random namespace.` |
+|       - | 1627 | ` */` |
+|    8445 | 1628 | `static sxi32 VmInstallStdClasses(ph7_vm *pVm)` |
+|       5 | 1629 | `{` |
+|       - | 1630 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|       - | 1631 | `		{ "stdClass", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1632 | `		/* unserialize()'s carrier for a disallowed or unknown class: as empty as` |
+|       - | 1633 | `		 * stdClass (its properties are the payload's, created dynamically); what` |
+|       - | 1634 | `		 * makes it special is the pVm->pIncClass checks at the access sites. */` |
+|       - | 1635 | `		{ "__PHP_Incomplete_Class", 0, 0, PH7_CLASS_FINAL, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1636 | `		{ "Random\\RandomException", "Exception", 0, PH7_CLASS_NOCLONE,` |
+|       - | 1637 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1638 | `		/* php 8.5's filter exceptions: FILTER_THROW_ON_FAILURE raises the second,` |
+|       - | 1639 | `		 * and the first is the base a caller catches to mean "any filter error". */` |
+|       - | 1640 | `		{ "Filter\\FilterException", "Exception", 0, 0,` |
+|       - | 1641 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1642 | `		{ "Filter\\FilterFailedException", "Filter\\FilterException", 0, 0,` |
+|       - | 1643 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|       - | 1644 | `	};` |
+|    8450 | 1645 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|       5 | 1646 | `}` |
+|    8445 | 1647 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
+|       5 | 1648 | `{` |
+|       - | 1649 | `	SyString sBuiltin;` |
+|       - | 1650 | `	/* The interfaces first: everything below implements one of them` |
+|       - | 1651 | `	 * (Exception implements Throwable). */` |
+|    8450 | 1652 | `	VmInstallCoreInterfaces(&(*pVm));` |
+|    8450 | 1653 | `	VmInstallExceptions(&(*pVm));` |
+|    8450 | 1654 | `	VmInstallStdClasses(&(*pVm));` |
+|    8450 | 1655 | `	VmInstallDirectory(&(*pVm));` |
+|    8450 | 1656 | `	VmInstallAttributes(&(*pVm));` |
+|    8450 | 1657 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
+|       - | 1658 | `	/* Compile the built-in library */` |
+|    8450 | 1659 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
+|    8450 | 1660 | `	return SXRET_OK;` |
+|       5 | 1661 | `}` |
+|       - | 1662 |  |

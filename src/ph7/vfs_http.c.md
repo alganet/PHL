@@ -119,13 +119,13 @@ Coverage: 1036/1227 lines (84.43%)
 |     - |  109 | ` * file(), readfile(), copy(), get_headers() -- has it, and an open that never` |
 |     - |  110 | ` * reached a response leaves the caller's previous value alone.` |
 |     - |  111 | ` */` |
-| 45829 |  112 | `PH7_PRIVATE void PH7_HttpFlushResponseHeaders(ph7_vm *pVm)` |
+| 47893 |  112 | `PH7_PRIVATE void PH7_HttpFlushResponseHeaders(ph7_vm *pVm)` |
 |     5 |  113 | `{` |
 |     - |  114 | `	static const char zVar[] = "http_response_header";` |
 |     - |  115 | `	ph7_value *pArr,*pSlot;` |
 |     - |  116 | `	SyString sName;` |
-| 45834 |  117 | `	if( !pVm->bHttpRespFresh ){` |
-| 45574 |  118 | `		return;` |
+| 47898 |  117 | `	if( !pVm->bHttpRespFresh ){` |
+| 47638 |  118 | `		return;` |
 |     - |  119 | `	}` |
 |   260 |  120 | `	pVm->bHttpRespFresh = 0;` |
 |   260 |  121 | `	pArr = PH7_HttpHeaderArray(pVm,&pVm->sHttpRespHdrs);` |
@@ -138,7 +138,7 @@ Coverage: 1036/1227 lines (84.43%)
 |   260 |  128 | `		PH7_MemObjStore(pArr,pSlot);` |
 |   130 |  129 | `	}` |
 |   260 |  130 | `	ph7_release_value(pVm,pArr);` |
-| 22853 |  131 | `}` |
+| 23885 |  131 | `}` |
 |     - |  132 | `/* http_clear_last_response_headers(): php drops the store, and the getter then` |
 |     - |  133 | ` * answers NULL rather than an empty array. */` |
 |   294 |  134 | `PH7_PRIVATE void PH7_HttpClearResponseHeaders(ph7_vm *pVm)` |
@@ -1773,15 +1773,15 @@ Coverage: 1036/1227 lines (84.43%)
 |     - | 1763 | `/* Is this one of the http wrapper's devices? Asked by the metadata reader,` |
 |     - | 1764 | ` * which labels them apart, by feof(), which reads the handle's own end, and by` |
 |     - | 1765 | ` * the allow_url_fopen screen, which gates both schemes alike. */` |
-| 58678 | 1766 | `PH7_PRIVATE int PH7_HttpStreamIs(const ph7_io_stream *pStream)` |
+| 61863 | 1766 | `PH7_PRIVATE int PH7_HttpStreamIs(const ph7_io_stream *pStream)` |
 |     5 | 1767 | `{` |
 |     - | 1768 | `#ifdef PH7_ENABLE_OPENSSL` |
-| 58683 | 1769 | `	if( pStream == &sHTTPS_Stream ){` |
+| 61868 | 1769 | `	if( pStream == &sHTTPS_Stream ){` |
 |    32 | 1770 | `		return 1;` |
 |     - | 1771 | `	}` |
 |     - | 1772 | `#endif` |
-| 58651 | 1773 | `	return pStream == &sHTTP_Stream;` |
-| 29272 | 1774 | `}` |
+| 61836 | 1773 | `	return pStream == &sHTTP_Stream;` |
+| 30865 | 1774 | `}` |
 |     - | 1775 | `/*` |
 |     - | 1776 | `` * php's `wrapper_data` for an http handle: the response headers of the exchange`` |
 |     - | 1777 | ` * THIS handle made, which is not the same thing as the VM's last set (a second` |
@@ -2048,15 +2048,15 @@ Coverage: 1036/1227 lines (84.43%)
 |     - | 2038 | ` * build -- the store they read is -- and get_headers() goes with the wrapper it` |
 |     - | 2039 | ` * is the one door of.` |
 |     - | 2040 | ` */` |
-|  7925 | 2041 | `PH7_PRIVATE void PH7_HttpInstallFuncs(ph7_vm *pVm)` |
+|  8445 | 2041 | `PH7_PRIVATE void PH7_HttpInstallFuncs(ph7_vm *pVm)` |
 |     5 | 2042 | `{` |
-|  7930 | 2043 | `	ph7_create_function(&(*pVm),"http_get_last_response_headers",` |
+|  8450 | 2043 | `	ph7_create_function(&(*pVm),"http_get_last_response_headers",` |
 |     - | 2044 | `		PH7_builtin_http_get_last_response_headers,0);` |
-|  7930 | 2045 | `	ph7_create_function(&(*pVm),"http_clear_last_response_headers",` |
+|  8450 | 2045 | `	ph7_create_function(&(*pVm),"http_clear_last_response_headers",` |
 |     - | 2046 | `		PH7_builtin_http_clear_last_response_headers,0);` |
 |     - | 2047 | `#if !defined(PH7_DISABLE_DISK_IO) && defined(PH7_ENABLE_NET)` |
-|  7930 | 2048 | `	ph7_create_function(&(*pVm),"get_headers",PH7_builtin_get_headers,0);` |
+|  8450 | 2048 | `	ph7_create_function(&(*pVm),"get_headers",PH7_builtin_get_headers,0);` |
 |     - | 2049 | `#endif` |
-|  7930 | 2050 | `}` |
+|  8450 | 2050 | `}` |
 |     - | 2051 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |     - | 2052 |  |

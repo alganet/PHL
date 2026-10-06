@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1413/1629 lines (86.74%)
+Coverage: 1430/1647 lines (86.82%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -80,22 +80,22 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |   70 |  |
 |     - |   71 | `/* ===== The receiver's state ===== */` |
 |     - |   72 |  |
-|  1788 |   73 | `static phl_domnode * SxeResOf(ph7_class_instance *pObj)` |
+|  1866 |   73 | `static phl_domnode * SxeResOf(ph7_class_instance *pObj)` |
 |     4 |   74 | `{` |
-|  1792 |   75 | `	ph7_value *pVal = pObj ? PH7_NativeAttr(pObj,SXE_RES) : 0;` |
-|  1792 |   76 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_RES) == 0 ){` |
-|     5 |   77 | `		return 0;` |
+|  1870 |   75 | `	ph7_value *pVal = pObj ? PH7_NativeAttr(pObj,SXE_RES) : 0;` |
+|  1870 |   76 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_RES) == 0 ){` |
+|    10 |   77 | `		return 0;` |
 |     - |   78 | `	}` |
-|  1788 |   79 | `	return (phl_domnode *)pVal->x.pOther;` |
-|   898 |   80 | `}` |
-|  1372 |   81 | `static xmlNodePtr SxeNodeOf(ph7_class_instance *pObj)` |
+|  1862 |   79 | `	return (phl_domnode *)pVal->x.pOther;` |
+|   937 |   80 | `}` |
+|  1412 |   81 | `static xmlNodePtr SxeNodeOf(ph7_class_instance *pObj)` |
 |     4 |   82 | `{` |
-|  1376 |   83 | `	phl_domnode *pNd = SxeResOf(pObj);` |
-|  1376 |   84 | `	return pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|  1416 |   83 | `	phl_domnode *pNd = SxeResOf(pObj);` |
+|  1416 |   84 | `	return pNd ? (xmlNodePtr)pNd->pNode : 0;` |
 |     4 |   85 | `}` |
-|  1846 |   86 | `static int SxeTypeOf(ph7_class_instance *pObj)` |
+|  1886 |   86 | `static int SxeTypeOf(ph7_class_instance *pObj)` |
 |     4 |   87 | `{` |
-|  1850 |   88 | `	return pObj ? (int)PH7_NativeAttrInt(pObj,SXE_IT) : SXE_ITER_NONE;` |
+|  1890 |   88 | `	return pObj ? (int)PH7_NativeAttrInt(pObj,SXE_IT) : SXE_ITER_NONE;` |
 |     4 |   89 | `}` |
 |     - |   90 | `/*` |
 |     - |   91 | ` * A string slot that may be UNSET, which is not the same as empty: php's` |
@@ -103,37 +103,37 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |   93 | ` * filter" where an empty one would mean "the empty namespace".  Answers 0 for` |
 |     - |   94 | ` * an unset slot -- the length sentinel PH7_NativeAttrStr cannot give.` |
 |     - |   95 | ` */` |
-|  1530 |   96 | `static const char * SxeSlotStr(ph7_class_instance *pObj,const char *zSlot,int *pnLen)` |
+|  1544 |   96 | `static const char * SxeSlotStr(ph7_class_instance *pObj,const char *zSlot,int *pnLen)` |
 |     4 |   97 | `{` |
-|  1534 |   98 | `	ph7_value *pVal = pObj ? PH7_NativeAttr(pObj,zSlot) : 0;` |
-|  1534 |   99 | `	if( pnLen ){` |
-|  1534 |  100 | `		*pnLen = 0;` |
-|   765 |  101 | `	}` |
-|  1534 |  102 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_STRING) == 0 ){` |
-|  1036 |  103 | `		return 0;` |
+|  1548 |   98 | `	ph7_value *pVal = pObj ? PH7_NativeAttr(pObj,zSlot) : 0;` |
+|  1548 |   99 | `	if( pnLen ){` |
+|  1548 |  100 | `		*pnLen = 0;` |
+|   772 |  101 | `	}` |
+|  1548 |  102 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_STRING) == 0 ){` |
+|  1050 |  103 | `		return 0;` |
 |     - |  104 | `	}` |
-|   502 |  105 | `	if( pnLen ){` |
-|   502 |  106 | `		*pnLen = (int)SyBlobLength(&pVal->sBlob);` |
+|   501 |  105 | `	if( pnLen ){` |
+|   501 |  106 | `		*pnLen = (int)SyBlobLength(&pVal->sBlob);` |
 |   249 |  107 | `	}` |
-|   502 |  108 | `	return (const char *)SyBlobData(&pVal->sBlob);` |
-|   769 |  109 | `}` |
+|   501 |  108 | `	return (const char *)SyBlobData(&pVal->sBlob);` |
+|   776 |  109 | `}` |
 |   414 |  110 | `static const char * SxeIterName(ph7_class_instance *pObj,int *pnLen)` |
 |     3 |  111 | `{` |
 |   417 |  112 | `	return SxeSlotStr(pObj,SXE_NM,pnLen);` |
 |     3 |  113 | `}` |
-|  1116 |  114 | `static const char * SxeNsFilter(ph7_class_instance *pObj,int *pnLen)` |
+|  1130 |  114 | `static const char * SxeNsFilter(ph7_class_instance *pObj,int *pnLen)` |
 |     4 |  115 | `{` |
-|  1120 |  116 | `	return SxeSlotStr(pObj,SXE_NS,pnLen);` |
+|  1134 |  116 | `	return SxeSlotStr(pObj,SXE_NS,pnLen);` |
 |     4 |  117 | `}` |
-|  1116 |  118 | `static int SxeIsPrefix(ph7_class_instance *pObj)` |
+|  1130 |  118 | `static int SxeIsPrefix(ph7_class_instance *pObj)` |
 |     4 |  119 | `{` |
-|  1120 |  120 | `	return pObj ? (int)PH7_NativeAttrInt(pObj,SXE_ISP) : 0;` |
+|  1134 |  120 | `	return pObj ? (int)PH7_NativeAttrInt(pObj,SXE_ISP) : 0;` |
 |     4 |  121 | `}` |
 |     - |  122 | `/* The receiver of a native method, when it really is one of ours. */` |
-|   940 |  123 | `static ph7_class_instance * SxeThis(ph7_context *pCtx)` |
+|   942 |  123 | `static ph7_class_instance * SxeThis(ph7_context *pCtx)` |
 |     4 |  124 | `{` |
-|   944 |  125 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   944 |  126 | `	return pThis && PH7_NativeAttr(pThis,SXE_RES) ? pThis : 0;` |
+|   946 |  125 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   946 |  126 | `	return pThis && PH7_NativeAttr(pThis,SXE_RES) ? pThis : 0;` |
 |     4 |  127 | `}` |
 |     - |  128 |  |
 |     - |  129 | `/*` |
@@ -147,30 +147,30 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  137 | `` * default `''` its two load functions carry, which must not mean "the empty`` |
 |     - |  138 | ` * namespace".` |
 |     - |  139 | ` */` |
-|   828 |  140 | `static int SxeMatchNs(xmlNodePtr pNode,const char *zNs,int nNs,int bPrefix)` |
+|   836 |  140 | `static int SxeMatchNs(xmlNodePtr pNode,const char *zNs,int nNs,int bPrefix)` |
 |     4 |  141 | `{` |
 |     - |  142 | `	const xmlChar *zHave;` |
-|   832 |  143 | `	if( pNode == 0 ){` |
+|   840 |  143 | `	if( pNode == 0 ){` |
 |   ! 0 |  144 | `		return 0;` |
 |     - |  145 | `	}` |
-|   832 |  146 | `	if( zNs == 0 \|\| nNs < 1 ){` |
-|   732 |  147 | `		return pNode->ns == 0 \|\| pNode->ns->prefix == 0;` |
+|   840 |  146 | `	if( zNs == 0 \|\| nNs < 1 ){` |
+|   740 |  147 | `		return pNode->ns == 0 \|\| pNode->ns->prefix == 0;` |
 |     - |  148 | `	}` |
-|   103 |  149 | `	if( pNode->ns == 0 ){` |
+|   102 |  149 | `	if( pNode->ns == 0 ){` |
 |    18 |  150 | `		return 0;` |
 |     - |  151 | `	}` |
-|    87 |  152 | `	zHave = bPrefix ? pNode->ns->prefix : pNode->ns->href;` |
-|    87 |  153 | `	if( zHave == 0 ){` |
+|    86 |  152 | `	zHave = bPrefix ? pNode->ns->prefix : pNode->ns->href;` |
+|    86 |  153 | `	if( zHave == 0 ){` |
 |    23 |  154 | `		return 0;` |
 |     - |  155 | `	}` |
-|    65 |  156 | `	return (int)xmlStrlen(zHave) == nNs && SyMemcmp(zHave,zNs,(sxu32)nNs) == 0;` |
-|   418 |  157 | `}` |
+|    64 |  156 | `	return (int)xmlStrlen(zHave) == nNs && SyMemcmp(zHave,zNs,(sxu32)nNs) == 0;` |
+|   422 |  157 | `}` |
 |     - |  158 | `/* ...and the receiver's own filter, applied to one node. */` |
-|   828 |  159 | `static int SxeMatch(ph7_class_instance *pObj,xmlNodePtr pNode)` |
+|   836 |  159 | `static int SxeMatch(ph7_class_instance *pObj,xmlNodePtr pNode)` |
 |     4 |  160 | `{` |
-|   832 |  161 | `	int nNs = 0;` |
-|   832 |  162 | `	const char *zNs = SxeNsFilter(pObj,&nNs);` |
-|   832 |  163 | `	return SxeMatchNs(pNode,zNs,nNs,SxeIsPrefix(pObj));` |
+|   840 |  161 | `	int nNs = 0;` |
+|   840 |  162 | `	const char *zNs = SxeNsFilter(pObj,&nNs);` |
+|   840 |  163 | `	return SxeMatchNs(pNode,zNs,nNs,SxeIsPrefix(pObj));` |
 |     4 |  164 | `}` |
 |     - |  165 | `/* Is this the name the receiver's question names? An unnamed question takes` |
 |     - |  166 | ` * every name. */` |
@@ -304,14 +304,14 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  294 | `` * over everything else.  This is `(string)$x` and it is what a child's value`` |
 |     - |  295 | ` * is when the table below decides it is a string.` |
 |     - |  296 | ` */` |
-|   252 |  297 | `static void SxeNodeText(SyBlob *pOut,xmlNodePtr pNode)` |
+|   254 |  297 | `static void SxeNodeText(SyBlob *pOut,xmlNodePtr pNode)` |
 |     3 |  298 | `{` |
 |     - |  299 | `	xmlNodePtr pWalk;` |
-|   255 |  300 | `	if( pNode == 0 ){` |
+|   257 |  300 | `	if( pNode == 0 ){` |
 |     9 |  301 | `		return;` |
 |     - |  302 | `	}` |
-|   244 |  303 | `	if( pNode->type == XML_COMMENT_NODE \|\| pNode->type == XML_PI_NODE` |
-|   244 |  304 | `	 \|\| pNode->type == XML_TEXT_NODE \|\| pNode->type == XML_CDATA_SECTION_NODE ){` |
+|   246 |  303 | `	if( pNode->type == XML_COMMENT_NODE \|\| pNode->type == XML_PI_NODE` |
+|   246 |  304 | `	 \|\| pNode->type == XML_TEXT_NODE \|\| pNode->type == XML_CDATA_SECTION_NODE ){` |
 |     - |  305 | ``		/* These carry their text in `content` and have no child list at all: the`` |
 |     - |  306 | ``		 * comment object php's table shows under `comment` stringifies to the`` |
 |     - |  307 | `		 * comment's own words. */` |
@@ -321,19 +321,19 @@ Coverage: 1413/1629 lines (86.74%)
 |     2 |  311 | `		}` |
 |     5 |  312 | `		return;` |
 |     - |  313 | `	}` |
-|   509 |  314 | `	for( pWalk = pNode->children ; pWalk ; pWalk = pWalk->next ){` |
-|   269 |  315 | `		if( pWalk->type == XML_TEXT_NODE \|\| pWalk->type == XML_CDATA_SECTION_NODE ){` |
-|   231 |  316 | `			if( pWalk->content ){` |
-|   345 |  317 | `				SyBlobAppend(pOut,(const char *)pWalk->content,` |
-|   228 |  318 | `					(sxu32)SyStrlen((const char *)pWalk->content));` |
-|   117 |  319 | `			}` |
-|   154 |  320 | `		}else if( pWalk->type == XML_ENTITY_REF_NODE ){` |
+|   513 |  314 | `	for( pWalk = pNode->children ; pWalk ; pWalk = pWalk->next ){` |
+|   271 |  315 | `		if( pWalk->type == XML_TEXT_NODE \|\| pWalk->type == XML_CDATA_SECTION_NODE ){` |
+|   233 |  316 | `			if( pWalk->content ){` |
+|   348 |  317 | `				SyBlobAppend(pOut,(const char *)pWalk->content,` |
+|   230 |  318 | `					(sxu32)SyStrlen((const char *)pWalk->content));` |
+|   118 |  319 | `			}` |
+|   155 |  320 | `		}else if( pWalk->type == XML_ENTITY_REF_NODE ){` |
 |     - |  321 | `			/* An unexpanded entity reference contributes its replacement text,` |
 |     - |  322 | `			 * which is where libxml keeps it. */` |
 |   ! 0 |  323 | `			SxeNodeText(pOut,pWalk);` |
 |   ! 0 |  324 | `		}` |
-|   136 |  325 | `	}` |
-|   129 |  326 | `}` |
+|   137 |  325 | `	}` |
+|   130 |  326 | `}` |
 |     - |  327 | `/* A blank text node in libxml's sense -- whitespace only. php's table skips` |
 |     - |  328 | ` * one where it would otherwise show the element's text. */` |
 |   118 |  329 | `static int SxeBlankText(xmlNodePtr pNode)` |
@@ -361,62 +361,62 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  351 | `` * children('urn:a')->kid` means the `urn:a` kid, because the filter rode the`` |
 |     - |  352 | ` * navigation.  BORROWED-free: the caller owns the returned reference.` |
 |     - |  353 | ` */` |
-|   558 |  354 | `static ph7_class_instance * SxeNew(ph7_vm *pVm,ph7_class *pClass,phl_xmldoc *pShell,` |
+|   578 |  354 | `static ph7_class_instance * SxeNew(ph7_vm *pVm,ph7_class *pClass,phl_xmldoc *pShell,` |
 |     - |  355 | `	xmlNodePtr pNode,int iType,const char *zName,int nName,` |
 |     - |  356 | `	const char *zNs,int nNs,int bIsPrefix)` |
 |     4 |  357 | `{` |
 |     - |  358 | `	ph7_class_instance *pObj;` |
 |     - |  359 | `	phl_domnode *pRes;` |
 |     - |  360 | `	ph7_value sVal;` |
-|   562 |  361 | `	if( pClass == 0 ){` |
+|   582 |  361 | `	if( pClass == 0 ){` |
 |   ! 0 |  362 | `		return 0;` |
 |     - |  363 | `	}` |
-|   562 |  364 | `	pObj = PH7_NewClassInstance(pVm,pClass);` |
-|   562 |  365 | `	if( pObj == 0 ){` |
+|   582 |  364 | `	pObj = PH7_NewClassInstance(pVm,pClass);` |
+|   582 |  365 | `	if( pObj == 0 ){` |
 |   ! 0 |  366 | `		return 0;` |
 |     - |  367 | `	}` |
-|   562 |  368 | `	pRes = (phl_domnode *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_domnode));` |
-|   562 |  369 | `	if( pRes == 0 ){` |
+|   582 |  368 | `	pRes = (phl_domnode *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_domnode));` |
+|   582 |  369 | `	if( pRes == 0 ){` |
 |   ! 0 |  370 | `		PH7_ClassInstanceUnref(pObj);` |
 |   ! 0 |  371 | `		return 0;` |
 |     - |  372 | `	}` |
-|   562 |  373 | `	pRes->pShell = pShell;` |
-|   562 |  374 | `	pRes->pNode = pNode;` |
-|   562 |  375 | `	PH7_MemObjInit(pVm,&sVal);` |
-|   562 |  376 | `	sVal.x.pOther = pRes;` |
-|   562 |  377 | `	sVal.iFlags = MEMOBJ_RES;` |
-|   562 |  378 | `	PH7_NativeSetProp(pVm,pObj,SXE_RES,sizeof(SXE_RES)-1,&sVal);` |
-|   562 |  379 | `	PH7_NativeSetAttrInt(pVm,pObj,SXE_IT,(sxi64)iType);` |
-|   562 |  380 | `	if( zName ){` |
+|   582 |  373 | `	pRes->pShell = pShell;` |
+|   582 |  374 | `	pRes->pNode = pNode;` |
+|   582 |  375 | `	PH7_MemObjInit(pVm,&sVal);` |
+|   582 |  376 | `	sVal.x.pOther = pRes;` |
+|   582 |  377 | `	sVal.iFlags = MEMOBJ_RES;` |
+|   582 |  378 | `	PH7_NativeSetProp(pVm,pObj,SXE_RES,sizeof(SXE_RES)-1,&sVal);` |
+|   582 |  379 | `	PH7_NativeSetAttrInt(pVm,pObj,SXE_IT,(sxi64)iType);` |
+|   582 |  380 | `	if( zName ){` |
 |   147 |  381 | `		PH7_NativeSetAttrStr(pVm,pObj,SXE_NM,zName,(sxu32)nName);` |
 |    72 |  382 | `	}` |
-|   562 |  383 | `	if( zNs && nNs > 0 ){` |
-|    57 |  384 | `		PH7_NativeSetAttrStr(pVm,pObj,SXE_NS,zNs,(sxu32)nNs);` |
-|    57 |  385 | `		PH7_NativeSetAttrInt(pVm,pObj,SXE_ISP,bIsPrefix ? 1 : 0);` |
+|   582 |  383 | `	if( zNs && nNs > 0 ){` |
+|    56 |  384 | `		PH7_NativeSetAttrStr(pVm,pObj,SXE_NS,zNs,(sxu32)nNs);` |
+|    56 |  385 | `		PH7_NativeSetAttrInt(pVm,pObj,SXE_ISP,bIsPrefix ? 1 : 0);` |
 |    27 |  386 | `	}` |
-|   562 |  387 | `	return pObj;` |
-|   283 |  388 | `}` |
+|   582 |  387 | `	return pObj;` |
+|   293 |  388 | `}` |
 |     - |  389 | `/* The same, derived from an existing object: its class, its shell and (unless` |
 |     - |  390 | ` * the caller states one) its namespace filter. */` |
-|   288 |  391 | `static ph7_class_instance * SxeDerive(ph7_vm *pVm,ph7_class_instance *pSrc,` |
+|   294 |  391 | `static ph7_class_instance * SxeDerive(ph7_vm *pVm,ph7_class_instance *pSrc,` |
 |     - |  392 | `	xmlNodePtr pNode,int iType,const char *zName,int nName)` |
-|     3 |  393 | `{` |
-|   291 |  394 | `	phl_domnode *pNd = SxeResOf(pSrc);` |
-|   291 |  395 | `	int nNs = 0;` |
-|   291 |  396 | `	const char *zNs = SxeNsFilter(pSrc,&nNs);` |
-|   291 |  397 | `	return SxeNew(pVm,pSrc->pClass,pNd ? pNd->pShell : 0,pNode,iType,zName,nName,` |
-|   144 |  398 | `		zNs,nNs,SxeIsPrefix(pSrc));` |
-|     3 |  399 | `}` |
+|     4 |  393 | `{` |
+|   298 |  394 | `	phl_domnode *pNd = SxeResOf(pSrc);` |
+|   298 |  395 | `	int nNs = 0;` |
+|   298 |  396 | `	const char *zNs = SxeNsFilter(pSrc,&nNs);` |
+|   298 |  397 | `	return SxeNew(pVm,pSrc->pClass,pNd ? pNd->pShell : 0,pNode,iType,zName,nName,` |
+|   147 |  398 | `		zNs,nNs,SxeIsPrefix(pSrc));` |
+|     4 |  399 | `}` |
 |     - |  400 | `/* ...and hand it to PHP. */` |
-|   270 |  401 | `static int SxeResultObj(ph7_context *pCtx,ph7_class_instance *pObj)` |
+|   284 |  401 | `static int SxeResultObj(ph7_context *pCtx,ph7_class_instance *pObj)` |
 |     4 |  402 | `{` |
-|   274 |  403 | `	if( pObj == 0 ){` |
+|   288 |  403 | `	if( pObj == 0 ){` |
 |   ! 0 |  404 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  405 | `		return PH7_OK;` |
 |     - |  406 | `	}` |
-|   274 |  407 | `	PH7_NativeResultObject(pCtx,pObj);` |
-|   274 |  408 | `	return PH7_OK;` |
-|   139 |  409 | `}` |
+|   288 |  407 | `	PH7_NativeResultObject(pCtx,pObj);` |
+|   288 |  408 | `	return PH7_OK;` |
+|   146 |  409 | `}` |
 |     - |  410 | `/* ...and hand back one the CALLER still owns -- the cursor object, which the` |
 |     - |  411 | ` * receiver's slot keeps alive. ph7_result_value takes its own reference. */` |
 |    86 |  412 | `static int SxeResultBorrowed(ph7_context *pCtx,ph7_class_instance *pObj)` |
@@ -699,13 +699,13 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  689 |  |
 |     - |  690 | ``/* `(string)$x`: the text of the first node the question finds, and an`` |
 |     - |  691 | ` * attribute's own value when that is what it found. */` |
-|   130 |  692 | `static void SxeToText(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *pOut)` |
+|   132 |  692 | `static void SxeToText(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *pOut)` |
 |     3 |  693 | `{` |
-|   133 |  694 | `	xmlNodePtr pNode = SxeTypeOf(pThis) == SXE_ITER_NONE` |
-|   130 |  695 | `		? SxeNodeOf(pThis) : SxeFirstNode(pThis);` |
-|    65 |  696 | `	(void)pVm;` |
-|   133 |  697 | `	SxeNodeText(pOut,pNode);` |
-|   133 |  698 | `}` |
+|   135 |  694 | `	xmlNodePtr pNode = SxeTypeOf(pThis) == SXE_ITER_NONE` |
+|   132 |  695 | `		? SxeNodeOf(pThis) : SxeFirstNode(pThis);` |
+|    66 |  696 | `	(void)pVm;` |
+|   135 |  697 | `	SxeNodeText(pOut,pNode);` |
+|   135 |  698 | `}` |
 |     - |  699 | ``/* `count($x)`: how many nodes the question stands for. For "this node" that is`` |
 |     - |  700 | ` * its child ELEMENTS -- php counts what a foreach would yield, and a foreach` |
 |     - |  701 | ` * over an element yields its children. */` |
@@ -802,14 +802,14 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  792 | ` * answer php never gives.` |
 |     - |  793 | ` */` |
 |   110 |  794 | `static const char * SxeCopyZ(ph7_vm *pVm,SyBlob *pBuf,const char *z,int n)` |
-|     2 |  795 | `{` |
-|   112 |  796 | `	SyBlobInit(pBuf,&pVm->sAllocator);` |
-|   112 |  797 | `	if( z && n > 0 ){` |
-|   112 |  798 | `		SyBlobAppend(pBuf,z,(sxu32)n);` |
+|     1 |  795 | `{` |
+|   111 |  796 | `	SyBlobInit(pBuf,&pVm->sAllocator);` |
+|   111 |  797 | `	if( z && n > 0 ){` |
+|   111 |  798 | `		SyBlobAppend(pBuf,z,(sxu32)n);` |
 |    55 |  799 | `	}` |
-|   112 |  800 | `	SyBlobNullAppend(pBuf);` |
-|   112 |  801 | `	return (const char *)SyBlobData(pBuf);` |
-|     2 |  802 | `}` |
+|   111 |  800 | `	SyBlobNullAppend(pBuf);` |
+|   111 |  801 | `	return (const char *)SyBlobData(pBuf);` |
+|     1 |  802 | `}` |
 |     - |  803 |  |
 |     - |  804 | `/*` |
 |     - |  805 | ` * The text a value becomes when it lands in the tree.` |
@@ -823,20 +823,20 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  813 | ` */` |
 |    72 |  814 | `static int SxeValueText(ph7_vm *pVm,ph7_value *pVal,int bAttr,SyBlob *pOut,` |
 |     - |  815 | `	const char **pzClass,char *zMsg,sxu32 nMsg)` |
-|     2 |  816 | `{` |
-|    74 |  817 | `	SyBlobInit(pOut,&pVm->sAllocator);` |
-|    74 |  818 | `	if( pVal == 0 ){` |
+|     1 |  816 | `{` |
+|    73 |  817 | `	SyBlobInit(pOut,&pVm->sAllocator);` |
+|    73 |  818 | `	if( pVal == 0 ){` |
 |   ! 0 |  819 | `		SyBlobNullAppend(pOut);` |
 |   ! 0 |  820 | `		return 1;` |
 |     - |  821 | `	}` |
-|    74 |  822 | `	if( pVal->iFlags & MEMOBJ_HASHMAP ){` |
+|    73 |  822 | `	if( pVal->iFlags & MEMOBJ_HASHMAP ){` |
 |     3 |  823 | `		*pzClass = "TypeError";` |
 |     4 |  824 | `		SyBufferFormat(zMsg,nMsg,` |
 |     - |  825 | `			"It's not possible to assign a complex type to %s, array given",` |
 |     1 |  826 | `			bAttr ? "attributes" : "properties");` |
 |     3 |  827 | `		return 0;` |
 |     - |  828 | `	}` |
-|    72 |  829 | `	if( pVal->iFlags & MEMOBJ_OBJ ){` |
+|    71 |  829 | `	if( pVal->iFlags & MEMOBJ_OBJ ){` |
 |     5 |  830 | `		ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;` |
 |     5 |  831 | `		if( pObj && PH7_NativeAttr(pObj,SXE_RES) ){` |
 |     3 |  832 | `			SxeToText(pVm,pObj,pOut);` |
@@ -852,15 +852,15 @@ Coverage: 1413/1629 lines (86.74%)
 |     3 |  842 | `		return 0;` |
 |     - |  843 | `	}` |
 |     - |  844 | `	{` |
-|    68 |  845 | `		int nLen = 0;` |
-|    68 |  846 | `		const char *zStr = ph7_value_to_string(pVal,&nLen);` |
-|    68 |  847 | `		if( nLen > 0 ){` |
-|    64 |  848 | `			SyBlobAppend(pOut,zStr,(sxu32)nLen);` |
+|    67 |  845 | `		int nLen = 0;` |
+|    67 |  846 | `		const char *zStr = ph7_value_to_string(pVal,&nLen);` |
+|    67 |  847 | `		if( nLen > 0 ){` |
+|    63 |  848 | `			SyBlobAppend(pOut,zStr,(sxu32)nLen);` |
 |    31 |  849 | `		}` |
 |     - |  850 | `	}` |
-|    68 |  851 | `	SyBlobNullAppend(pOut);` |
-|    68 |  852 | `	return 1;` |
-|    38 |  853 | `}` |
+|    67 |  851 | `	SyBlobNullAppend(pOut);` |
+|    67 |  852 | `	return 1;` |
+|    37 |  853 | `}` |
 |     - |  854 | `/*` |
 |     - |  855 | ``  * Put text into an element or an attribute the way php's `change_node_zval` `` |
 |     - |  856 | `` * does: the string is ENCODED first and then set as content, so a `&` in a`` |
@@ -869,21 +869,21 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  859 | `` * is what makes `$x->d = null` print `<d/>` and not `<d></d>`.`` |
 |     - |  860 | ` */` |
 |    64 |  861 | `static void SxeSetText(xmlNodePtr pNode,const char *zText)` |
-|     2 |  862 | `{` |
+|     1 |  862 | `{` |
 |     - |  863 | `	xmlChar *pEnc;` |
-|    66 |  864 | `	if( pNode == 0 ){` |
+|    65 |  864 | `	if( pNode == 0 ){` |
 |   ! 0 |  865 | `		return;` |
 |     - |  866 | `	}` |
-|    66 |  867 | `	if( zText == 0 \|\| zText[0] == 0 ){` |
+|    65 |  867 | `	if( zText == 0 \|\| zText[0] == 0 ){` |
 |     5 |  868 | `		xmlNodeSetContent(pNode,0);` |
 |     5 |  869 | `		return;` |
 |     - |  870 | `	}` |
-|    62 |  871 | `	pEnc = xmlEncodeEntitiesReentrant(pNode->doc,(const xmlChar *)zText);` |
-|    62 |  872 | `	xmlNodeSetContent(pNode,pEnc ? pEnc : (const xmlChar *)zText);` |
-|    62 |  873 | `	if( pEnc ){` |
-|    62 |  874 | `		xmlFree(pEnc);` |
+|    61 |  871 | `	pEnc = xmlEncodeEntitiesReentrant(pNode->doc,(const xmlChar *)zText);` |
+|    61 |  872 | `	xmlNodeSetContent(pNode,pEnc ? pEnc : (const xmlChar *)zText);` |
+|    61 |  873 | `	if( pEnc ){` |
+|    61 |  874 | `		xmlFree(pEnc);` |
 |    30 |  875 | `	}` |
-|    34 |  876 | `}` |
+|    33 |  876 | `}` |
 |     - |  877 | `/* A new element under pParent carrying pParent's namespace -- php's` |
 |     - |  878 | `` * `xmlNewTextChild(node, node->ns, name, value)`, which is why a child created`` |
 |     - |  879 | ` * under a default-namespace root is in that namespace too. */` |
@@ -909,24 +909,24 @@ Coverage: 1413/1629 lines (86.74%)
 |    13 |  899 | `	return pNew;` |
 |     7 |  900 | `}` |
 |     - |  901 | `/* The attribute of pNode with this name that the filter takes, or NULL. */` |
-|    50 |  902 | `static xmlAttrPtr SxeFindAttr(ph7_class_instance *pThis,xmlNodePtr pNode,` |
+|    56 |  902 | `static xmlAttrPtr SxeFindAttr(ph7_class_instance *pThis,xmlNodePtr pNode,` |
 |     - |  903 | `	const char *zName,int nName)` |
 |     3 |  904 | `{` |
 |     - |  905 | `	xmlAttrPtr pAttr;` |
-|    53 |  906 | `	if( pNode == 0 \|\| pNode->type != XML_ELEMENT_NODE ){` |
+|    59 |  906 | `	if( pNode == 0 \|\| pNode->type != XML_ELEMENT_NODE ){` |
 |   ! 0 |  907 | `		return 0;` |
 |     - |  908 | `	}` |
-|    75 |  909 | `	for( pAttr = pNode->properties ; pAttr ; pAttr = pAttr->next ){` |
-|    47 |  910 | `		if( !SxeMatch(pThis,(xmlNodePtr)pAttr) ){` |
+|    83 |  909 | `	for( pAttr = pNode->properties ; pAttr ; pAttr = pAttr->next ){` |
+|    55 |  910 | `		if( !SxeMatch(pThis,(xmlNodePtr)pAttr) ){` |
 |   ! 0 |  911 | `			continue;` |
 |     - |  912 | `		}` |
-|    44 |  913 | `		if( pAttr->name && (int)xmlStrlen(pAttr->name) == nName` |
-|    42 |  914 | `		 && SyMemcmp(pAttr->name,zName,(sxu32)nName) == 0 ){` |
-|    25 |  915 | `			return pAttr;` |
+|    52 |  913 | `		if( pAttr->name && (int)xmlStrlen(pAttr->name) == nName` |
+|    50 |  914 | `		 && SyMemcmp(pAttr->name,zName,(sxu32)nName) == 0 ){` |
+|    31 |  915 | `			return pAttr;` |
 |     - |  916 | `		}` |
-|    14 |  917 | `	}` |
-|    31 |  918 | `	return 0;` |
-|    28 |  919 | `}` |
+|    15 |  917 | `	}` |
+|    30 |  918 | `	return 0;` |
+|    31 |  919 | `}` |
 |     - |  920 | `/*` |
 |     - |  921 | ` * The node a WRITE lands on or beside: the object's own node for "this node",` |
 |     - |  922 | ` * and the first match otherwise -- MATERIALIZED when there is none, so` |
@@ -935,12 +935,12 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  925 | ` * object with no node).` |
 |     - |  926 | ` */` |
 |    52 |  927 | `static xmlNodePtr SxeWriteBase(ph7_vm *pVm,ph7_class_instance *pThis,int bCreate)` |
-|     2 |  928 | `{` |
-|    54 |  929 | `	int iType = SxeTypeOf(pThis);` |
-|    54 |  930 | `	xmlNodePtr pNode = SxeNodeOf(pThis);` |
+|     1 |  928 | `{` |
+|    53 |  929 | `	int iType = SxeTypeOf(pThis);` |
+|    53 |  930 | `	xmlNodePtr pNode = SxeNodeOf(pThis);` |
 |     - |  931 | `	xmlNodePtr pFirst;` |
-|    54 |  932 | `	if( pNode == 0 \|\| iType == SXE_ITER_ATTRLIST ){` |
-|    14 |  933 | `		return iType == SXE_ITER_ATTRLIST ? pNode : 0;` |
+|    53 |  932 | `	if( pNode == 0 \|\| iType == SXE_ITER_ATTRLIST ){` |
+|    13 |  933 | `		return iType == SXE_ITER_ATTRLIST ? pNode : 0;` |
 |     - |  934 | `	}` |
 |    41 |  935 | `	if( iType == SXE_ITER_NONE \|\| iType == SXE_ITER_CHILD ){` |
 |    35 |  936 | `		return pNode;` |
@@ -952,7 +952,7 @@ Coverage: 1413/1629 lines (86.74%)
 |     5 |  942 | `		pFirst = SxeNewChild(pVm,pNode,zNm,nNm,0);` |
 |     2 |  943 | `	}` |
 |     7 |  944 | `	return pFirst;` |
-|    28 |  945 | `}` |
+|    27 |  945 | `}` |
 |     - |  946 |  |
 |     - |  947 | `/*` |
 |     - |  948 | ` * A warning php raises from a WRITE, which is not a call: there is no accessor` |
@@ -985,31 +985,31 @@ Coverage: 1413/1629 lines (86.74%)
 |     - |  975 | ` */` |
 |    36 |  976 | `static void SxeAttrStore(ph7_vm *pVm,ph7_class_instance *pThis,xmlNodePtr pBase,` |
 |     - |  977 | `	const char *zName,int nName,ph7_value *pValue,const char **pzClass,char *zMsg,sxu32 nMsg)` |
-|     2 |  978 | `{` |
+|     1 |  978 | `{` |
 |     - |  979 | `	SyBlob sText;` |
 |     - |  980 | `	xmlAttrPtr pAttr;` |
-|    38 |  981 | `	if( nName < 1 \|\| !SxeValueText(pVm,pValue,1,&sText,pzClass,zMsg,nMsg) ){` |
+|    37 |  981 | `	if( nName < 1 \|\| !SxeValueText(pVm,pValue,1,&sText,pzClass,zMsg,nMsg) ){` |
 |   ! 0 |  982 | `		return;` |
 |     - |  983 | `	}` |
-|    38 |  984 | `	if( pBase == 0 \|\| pBase->type != XML_ELEMENT_NODE ){` |
+|    37 |  984 | `	if( pBase == 0 \|\| pBase->type != XML_ELEMENT_NODE ){` |
 |     - |  985 | `		/* php refuses the value before it looks for a node to write it to. */` |
 |   ! 0 |  986 | `		SyBlobRelease(&sText);` |
 |   ! 0 |  987 | `		return;` |
 |     - |  988 | `	}` |
-|    38 |  989 | `	pAttr = SxeFindAttr(pThis,pBase,zName,nName);` |
-|    38 |  990 | `	if( pAttr == 0 ){` |
+|    37 |  989 | `	pAttr = SxeFindAttr(pThis,pBase,zName,nName);` |
+|    37 |  990 | `	if( pAttr == 0 ){` |
 |     - |  991 | `		/* An attribute list creates one too since php 8.5.11; 8.5.10 took the` |
 |     - |  992 | `		 * list's first attribute for the element and created nothing. */` |
 |     - |  993 | `		SyBlob sNm;` |
-|    38 |  994 | `		pAttr = xmlNewProp(pBase,` |
+|    37 |  994 | `		pAttr = xmlNewProp(pBase,` |
 |    24 |  995 | `			(const xmlChar *)SxeCopyZ(pVm,&sNm,zName,nName),(const xmlChar *)"");` |
-|    26 |  996 | `		SyBlobRelease(&sNm);` |
+|    25 |  996 | `		SyBlobRelease(&sNm);` |
 |    12 |  997 | `	}` |
-|    38 |  998 | `	if( pAttr ){` |
-|    38 |  999 | `		SxeSetText((xmlNodePtr)pAttr,(const char *)SyBlobData(&sText));` |
+|    37 |  998 | `	if( pAttr ){` |
+|    37 |  999 | `		SxeSetText((xmlNodePtr)pAttr,(const char *)SyBlobData(&sText));` |
 |    18 | 1000 | `	}` |
-|    38 | 1001 | `	SyBlobRelease(&sText);` |
-|    20 | 1002 | `}` |
+|    37 | 1001 | `	SyBlobRelease(&sText);` |
+|    19 | 1002 | `}` |
 |     - | 1003 | `/*` |
 |     - | 1004 | `` * `$x->name = value` -- php's write_property.`` |
 |     - | 1005 | ` *` |
@@ -1019,17 +1019,17 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 1009 | `` * attribute list the name is an ATTRIBUTE, written as `$x['name']` would be.`` |
 |     - | 1010 | ` */` |
 |    42 | 1011 | `static void SxePropStore(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx *pCtx)` |
-|     2 | 1012 | `{` |
-|    44 | 1013 | `	const SyString *pName = pCtx->pName;` |
-|    44 | 1014 | `	ph7_value *pValue = pCtx->pResult;` |
-|    44 | 1015 | `	xmlNodePtr pBase = SxeWriteBase(pVm,pThis,TRUE);` |
-|    44 | 1016 | `	xmlNodePtr pWalk,pHit = 0;` |
-|    44 | 1017 | `	int nHit = 0;` |
+|     1 | 1012 | `{` |
+|    43 | 1013 | `	const SyString *pName = pCtx->pName;` |
+|    43 | 1014 | `	ph7_value *pValue = pCtx->pResult;` |
+|    43 | 1015 | `	xmlNodePtr pBase = SxeWriteBase(pVm,pThis,TRUE);` |
+|    43 | 1016 | `	xmlNodePtr pWalk,pHit = 0;` |
+|    43 | 1017 | `	int nHit = 0;` |
 |     - | 1018 | `	SyBlob sText;` |
-|    44 | 1019 | `	if( SxeTypeOf(pThis) == SXE_ITER_ATTRLIST ){` |
-|    20 | 1020 | `		SxeAttrStore(pVm,pThis,pBase,SyStringData(pName),(int)SyStringLength(pName),` |
+|    43 | 1019 | `	if( SxeTypeOf(pThis) == SXE_ITER_ATTRLIST ){` |
+|    19 | 1020 | `		SxeAttrStore(pVm,pThis,pBase,SyStringData(pName),(int)SyStringLength(pName),` |
 |    12 | 1021 | `			pValue,&pCtx->zThrowClass,pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg));` |
-|    17 | 1022 | `		return;` |
+|    16 | 1022 | `		return;` |
 |     - | 1023 | `	}` |
 |    31 | 1024 | `	if( pBase == 0 \|\| pBase->type != XML_ELEMENT_NODE ){` |
 |   ! 0 | 1025 | `		return;` |
@@ -1064,7 +1064,7 @@ Coverage: 1413/1629 lines (86.74%)
 |     4 | 1054 | `			(const char *)SyBlobData(&sText));` |
 |     - | 1055 | `	}` |
 |    25 | 1056 | `	SyBlobRelease(&sText);` |
-|    23 | 1057 | `}` |
+|    22 | 1057 | `}` |
 |     - | 1058 | ``/* `unset($x->name)` -- php removes EVERY matching child, not the first. */`` |
 |     6 | 1059 | `static void SxePropUnset(ph7_vm *pVm,ph7_class_instance *pThis,const SyString *pName)` |
 |     1 | 1060 | `{` |
@@ -1099,28 +1099,28 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 1089 | ` * one place php and this differ -- php's handler owns those too.` |
 |     - | 1090 | ` */` |
 |   314 | 1091 | `static void SxePropHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx *pCtx)` |
-|     4 | 1092 | `{` |
-|   318 | 1093 | `	if( PH7_NativeAttr(pThis,SXE_RES) == 0 ){` |
+|     3 | 1092 | `{` |
+|   317 | 1093 | `	if( PH7_NativeAttr(pThis,SXE_RES) == 0 ){` |
 |   ! 0 | 1094 | `		return;` |
 |     - | 1095 | `	}` |
-|   318 | 1096 | `	if( pCtx->iMode == PH7_NATIVE_PROP_OWNS ){` |
+|   317 | 1096 | `	if( pCtx->iMode == PH7_NATIVE_PROP_OWNS ){` |
 |     - | 1097 | `		/* Every name is: the class declares no property, so php's write_property` |
 |     - | 1098 | `		 * stands where a dynamic property would be created. */` |
-|    86 | 1099 | `		pCtx->bAnswered = 1;` |
-|    86 | 1100 | `		return;` |
+|    85 | 1099 | `		pCtx->bAnswered = 1;` |
+|    85 | 1100 | `		return;` |
 |     - | 1101 | `	}` |
-|   234 | 1102 | `	if( pCtx->iMode == PH7_NATIVE_PROP_WRITE ){` |
+|   233 | 1102 | `	if( pCtx->iMode == PH7_NATIVE_PROP_WRITE ){` |
 |     - | 1103 | `		/* Asked before the value exists, and this handler really STORES -- so it` |
 |     - | 1104 | `		 * declines here and takes the write at STORE below, which is the door` |
 |     - | 1105 | `		 * every overloaded write shape ends at. Answering here would SWALLOW the` |
 |     - | 1106 | `		 * store: the opcode would consume the access and the value would land` |
 |     - | 1107 | `		 * nowhere. */` |
-|    44 | 1108 | `		return;` |
+|    43 | 1108 | `		return;` |
 |     - | 1109 | `	}` |
-|   192 | 1110 | `	if( pCtx->iMode == PH7_NATIVE_PROP_STORE ){` |
-|    44 | 1111 | `		SxePropStore(pVm,pThis,pCtx);` |
-|    44 | 1112 | `		pCtx->bAnswered = 1;` |
-|    44 | 1113 | `		return;` |
+|   191 | 1110 | `	if( pCtx->iMode == PH7_NATIVE_PROP_STORE ){` |
+|    43 | 1111 | `		SxePropStore(pVm,pThis,pCtx);` |
+|    43 | 1112 | `		pCtx->bAnswered = 1;` |
+|    43 | 1113 | `		return;` |
 |     - | 1114 | `	}` |
 |   149 | 1115 | `	if( pCtx->iMode == PH7_NATIVE_PROP_UNSET ){` |
 |     7 | 1116 | `		SxePropUnset(pVm,pThis,pCtx->pName);` |
@@ -1128,7 +1128,7 @@ Coverage: 1413/1629 lines (86.74%)
 |     7 | 1118 | `		return;` |
 |     - | 1119 | `	}` |
 |   143 | 1120 | `	SxePropRead(pVm,pThis,pCtx);` |
-|   161 | 1121 | `}` |
+|   160 | 1121 | `}` |
 |     - | 1122 |  |
 |     - | 1123 | `/* ===== Dimensions: php's read_dimension / write_dimension ===== */` |
 |     - | 1124 |  |
@@ -1138,10 +1138,10 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 1128 | `` * That is why `$x['0']` makes an attribute called `0` and `$x[0]` reaches the`` |
 |     - | 1129 | ` * element -- the two spellings are different questions.` |
 |     - | 1130 | ` */` |
-|    54 | 1131 | `static int SxeDimIsInt(ph7_value *pOffset)` |
+|    60 | 1131 | `static int SxeDimIsInt(ph7_value *pOffset)` |
 |     4 | 1132 | `{` |
-|    66 | 1133 | `	return pOffset != 0 && (pOffset->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL\|MEMOBJ_BOOL)) != 0` |
-|    81 | 1134 | `		&& (pOffset->iFlags & MEMOBJ_STRING) == 0;` |
+|    72 | 1133 | `	return pOffset != 0 && (pOffset->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL\|MEMOBJ_BOOL)) != 0` |
+|    90 | 1134 | `		&& (pOffset->iFlags & MEMOBJ_STRING) == 0;` |
 |     4 | 1135 | `}` |
 |     - | 1136 | `/* The node at a positional offset in this object's walk, or NULL. A negative` |
 |     - | 1137 | ` * offset reaches NOTHING: a read of it is empty, an unset a no-op and a write` |
@@ -1175,40 +1175,40 @@ Coverage: 1413/1629 lines (86.74%)
 |     7 | 1165 | `	return pHit;` |
 |     9 | 1166 | `}` |
 |     - | 1167 | `/* The element an ATTRIBUTE offset is asked of. */` |
-|    34 | 1168 | `static xmlNodePtr SxeAttrBase(ph7_class_instance *pThis)` |
+|    40 | 1168 | `static xmlNodePtr SxeAttrBase(ph7_class_instance *pThis)` |
 |     3 | 1169 | `{` |
-|    37 | 1170 | `	int iType = SxeTypeOf(pThis);` |
-|    37 | 1171 | `	if( iType == SXE_ITER_NONE \|\| iType == SXE_ITER_CHILD \|\| iType == SXE_ITER_ATTRLIST ){` |
-|    37 | 1172 | `		return SxeNodeOf(pThis);` |
+|    43 | 1170 | `	int iType = SxeTypeOf(pThis);` |
+|    43 | 1171 | `	if( iType == SXE_ITER_NONE \|\| iType == SXE_ITER_CHILD \|\| iType == SXE_ITER_ATTRLIST ){` |
+|    43 | 1172 | `		return SxeNodeOf(pThis);` |
 |     - | 1173 | `	}` |
 |   ! 0 | 1174 | `	return SxeFirstNode(pThis);` |
-|    20 | 1175 | `}` |
-|    14 | 1176 | `static void SxeDimRead(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)` |
-|     3 | 1177 | `{` |
-|    17 | 1178 | `	ph7_class_instance *pSub = 0;` |
-|    17 | 1179 | `	int bIsset = pCtx->iMode == PH7_NATIVE_DIM_ISSET;` |
-|    17 | 1180 | `	int bEmpty = pCtx->iMode == PH7_NATIVE_DIM_NOTEMPTY;` |
-|    17 | 1181 | `	xmlNodePtr pHit = 0;` |
-|    17 | 1182 | `	if( SxeDimIsInt(pCtx->pOffset) ){` |
+|    23 | 1175 | `}` |
+|    20 | 1176 | `static void SxeDimRead(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)` |
+|     4 | 1177 | `{` |
+|    24 | 1178 | `	ph7_class_instance *pSub = 0;` |
+|    24 | 1179 | `	int bIsset = pCtx->iMode == PH7_NATIVE_DIM_ISSET;` |
+|    24 | 1180 | `	int bEmpty = pCtx->iMode == PH7_NATIVE_DIM_NOTEMPTY;` |
+|    24 | 1181 | `	xmlNodePtr pHit = 0;` |
+|    24 | 1182 | `	if( SxeDimIsInt(pCtx->pOffset) ){` |
 |     6 | 1183 | `		pHit = SxeNodeAtOffset(pThis,ph7_value_to_int64(pCtx->pOffset),0);` |
-|    14 | 1184 | `	}else if( pCtx->pOffset ){` |
-|    12 | 1185 | `		int nName = 0;` |
-|    12 | 1186 | `		const char *zName = ph7_value_to_string(pCtx->pOffset,&nName);` |
-|    12 | 1187 | `		pHit = (xmlNodePtr)SxeFindAttr(pThis,SxeAttrBase(pThis),zName,nName);` |
-|     5 | 1188 | `	}` |
-|    17 | 1189 | `	if( pHit == 0 ){` |
+|    21 | 1184 | `	}else if( pCtx->pOffset ){` |
+|    19 | 1185 | `		int nName = 0;` |
+|    19 | 1186 | `		const char *zName = ph7_value_to_string(pCtx->pOffset,&nName);` |
+|    19 | 1187 | `		pHit = (xmlNodePtr)SxeFindAttr(pThis,SxeAttrBase(pThis),zName,nName);` |
+|     8 | 1188 | `	}` |
+|    24 | 1189 | `	if( pHit == 0 ){` |
 |     3 | 1190 | `		if( bIsset \|\| bEmpty ){` |
 |   ! 0 | 1191 | `			PH7_MemObjRelease(pCtx->pResult);` |
 |   ! 0 | 1192 | `			ph7_value_bool(pCtx->pResult,0);` |
 |   ! 0 | 1193 | `		}` |
 |     3 | 1194 | `		return;` |
 |     - | 1195 | `	}` |
-|    15 | 1196 | `	if( bIsset ){` |
+|    22 | 1196 | `	if( bIsset ){` |
 |   ! 0 | 1197 | `		PH7_MemObjRelease(pCtx->pResult);` |
 |   ! 0 | 1198 | `		ph7_value_bool(pCtx->pResult,1);` |
 |   ! 0 | 1199 | `		return;` |
 |     - | 1200 | `	}` |
-|    15 | 1201 | `	if( bEmpty ){` |
+|    22 | 1201 | `	if( bEmpty ){` |
 |     - | 1202 | ``		/* php's `check_empty` reads the offset's TEXT and judges THAT, so an`` |
 |     - | 1203 | `		 * attribute holding "0" is empty() while the object a read of it hands` |
 |     - | 1204 | `		 * back is truthy. */` |
@@ -1224,15 +1224,15 @@ Coverage: 1413/1629 lines (86.74%)
 |   ! 0 | 1214 | `		SyBlobRelease(&sText);` |
 |   ! 0 | 1215 | `		return;` |
 |     - | 1216 | `	}` |
-|    15 | 1217 | `	pSub = SxeDerive(pVm,pThis,pHit,SXE_ITER_NONE,0,0);` |
-|    15 | 1218 | `	if( pSub == 0 ){` |
+|    22 | 1217 | `	pSub = SxeDerive(pVm,pThis,pHit,SXE_ITER_NONE,0,0);` |
+|    22 | 1218 | `	if( pSub == 0 ){` |
 |   ! 0 | 1219 | `		return;` |
 |     - | 1220 | `	}` |
-|    15 | 1221 | `	PH7_MemObjRelease(pCtx->pResult);` |
-|    15 | 1222 | `	PH7_MemObjInit(pVm,pCtx->pResult);` |
-|    15 | 1223 | `	pCtx->pResult->x.pOther = pSub;` |
-|    15 | 1224 | `	pCtx->pResult->iFlags = MEMOBJ_OBJ;` |
-|    10 | 1225 | `}` |
+|    22 | 1221 | `	PH7_MemObjRelease(pCtx->pResult);` |
+|    22 | 1222 | `	PH7_MemObjInit(pVm,pCtx->pResult);` |
+|    22 | 1223 | `	pCtx->pResult->x.pOther = pSub;` |
+|    22 | 1224 | `	pCtx->pResult->iFlags = MEMOBJ_OBJ;` |
+|    14 | 1225 | `}` |
 |     - | 1226 | `/*` |
 |     - | 1227 | `` * `$x[$k] = $v`, `$x[] = $v` and `unset($x[$k])`.`` |
 |     - | 1228 | ` *` |
@@ -1250,17 +1250,17 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 1240 | ` *     second root. php's own answer, degenerate and reproduced.` |
 |     - | 1241 | ` */` |
 |    38 | 1242 | `static void SxeDimWrite(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pDim)` |
-|     2 | 1243 | `{` |
-|    40 | 1244 | `	int iType = SxeTypeOf(pThis);` |
+|     1 | 1243 | `{` |
+|    39 | 1244 | `	int iType = SxeTypeOf(pThis);` |
 |     - | 1245 | `	SyBlob sText;` |
-|    40 | 1246 | `	if( pDim->pOffset && !SxeDimIsInt(pDim->pOffset) ){` |
-|    26 | 1247 | `		int nName = 0;` |
-|    26 | 1248 | `		const char *zName = ph7_value_to_string(pDim->pOffset,&nName);` |
-|    26 | 1249 | `		xmlNodePtr pBase = iType == SXE_ITER_ELEMENT` |
+|    39 | 1246 | `	if( pDim->pOffset && !SxeDimIsInt(pDim->pOffset) ){` |
+|    25 | 1247 | `		int nName = 0;` |
+|    25 | 1248 | `		const char *zName = ph7_value_to_string(pDim->pOffset,&nName);` |
+|    25 | 1249 | `		xmlNodePtr pBase = iType == SXE_ITER_ELEMENT` |
 |    24 | 1250 | `			? SxeWriteBase(pVm,pThis,TRUE) : SxeAttrBase(pThis);` |
-|    38 | 1251 | `		SxeAttrStore(pVm,pThis,pBase,zName,nName,pDim->pResult,&pDim->zThrowClass,` |
+|    37 | 1251 | `		SxeAttrStore(pVm,pThis,pBase,zName,nName,pDim->pResult,&pDim->zThrowClass,` |
 |    24 | 1252 | `			pDim->zThrowMsg,sizeof(pDim->zThrowMsg));` |
-|    26 | 1253 | `		return;` |
+|    25 | 1253 | `		return;` |
 |     - | 1254 | `	}` |
 |    15 | 1255 | `	if( iType == SXE_ITER_ATTRLIST ){` |
 |   ! 0 | 1256 | `		if( pDim->pOffset == 0 ){` |
@@ -1350,7 +1350,7 @@ Coverage: 1413/1629 lines (86.74%)
 |   ! 0 | 1340 | `			SyBlobRelease(&sText);` |
 |   ! 0 | 1341 | `		}` |
 |     - | 1342 | `	}` |
-|    21 | 1343 | `}` |
+|    20 | 1343 | `}` |
 |     6 | 1344 | `static void SxeDimUnset(ph7_class_instance *pThis,PH7_NativeDimCtx *pDim)` |
 |     1 | 1345 | `{` |
 |     7 | 1346 | `	xmlNodePtr pHit = 0;` |
@@ -1375,39 +1375,39 @@ Coverage: 1413/1629 lines (86.74%)
 |     3 | 1365 | `	SySetPut(&SxeResOf(pThis)->pShell->aOrphans,(const void *)&pHit);` |
 |     4 | 1366 | `}` |
 |     - | 1367 | `/* ph7_class::xDim -- one callback for all five modes. */` |
-|    58 | 1368 | `static void SxeDimHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)` |
+|    64 | 1368 | `static void SxeDimHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)` |
 |     4 | 1369 | `{` |
-|    62 | 1370 | `	if( PH7_NativeAttr(pThis,SXE_RES) == 0 ){` |
+|    68 | 1370 | `	if( PH7_NativeAttr(pThis,SXE_RES) == 0 ){` |
 |   ! 0 | 1371 | `		return;` |
 |     - | 1372 | `	}` |
-|    58 | 1373 | `	if( pCtx->iMode == PH7_NATIVE_DIM_READ \|\| pCtx->iMode == PH7_NATIVE_DIM_ISSET` |
+|    64 | 1373 | `	if( pCtx->iMode == PH7_NATIVE_DIM_READ \|\| pCtx->iMode == PH7_NATIVE_DIM_ISSET` |
 |    48 | 1374 | `	 \|\| pCtx->iMode == PH7_NATIVE_DIM_NOTEMPTY ){` |
-|    17 | 1375 | `		SxeDimRead(pVm,pThis,pCtx);` |
-|    17 | 1376 | `		return;` |
+|    24 | 1375 | `		SxeDimRead(pVm,pThis,pCtx);` |
+|    24 | 1376 | `		return;` |
 |     - | 1377 | `	}` |
-|    46 | 1378 | `	if( pCtx->pResult == 0 && pCtx->iMode != PH7_NATIVE_DIM_UNSET ){` |
+|    45 | 1378 | `	if( pCtx->pResult == 0 && pCtx->iMode != PH7_NATIVE_DIM_UNSET ){` |
 |     - | 1379 | `		/* The refusal-WORDING probe (PH7_ClassNativeDimRefusal), which carries` |
 |     - | 1380 | `		 * neither an offset nor a value. This class has no sentence of its own:` |
 |     - | 1381 | `		 * every write it cannot take is php's generic one, so leaving the probe` |
 |     - | 1382 | `		 * unanswered is the right answer. */` |
 |   ! 0 | 1383 | `		return;` |
 |     - | 1384 | `	}` |
-|    46 | 1385 | `	if( pCtx->iMode == PH7_NATIVE_DIM_UNSET ){` |
+|    45 | 1385 | `	if( pCtx->iMode == PH7_NATIVE_DIM_UNSET ){` |
 |     7 | 1386 | `		SxeDimUnset(pThis,pCtx);` |
 |     7 | 1387 | `		pCtx->bStored = 1;` |
 |     7 | 1388 | `		return;` |
 |     - | 1389 | `	}` |
-|    40 | 1390 | `	SxeDimWrite(pVm,pThis,pCtx);` |
-|    40 | 1391 | `	pCtx->bStored = 1;` |
-|    33 | 1392 | `}` |
+|    39 | 1390 | `	SxeDimWrite(pVm,pThis,pCtx);` |
+|    39 | 1391 | `	pCtx->bStored = 1;` |
+|    36 | 1392 | `}` |
 |     - | 1393 |  |
 |     - | 1394 | `/* ===== The methods ===== */` |
 |     - | 1395 |  |
 |     - | 1396 | `/* The node a method that WORKS ON ONE node uses: "this node" for the plain` |
 |     - | 1397 | ` * question and the first match otherwise. */` |
-|   342 | 1398 | `static xmlNodePtr SxeMethodNode(ph7_class_instance *pThis)` |
+|   374 | 1398 | `static xmlNodePtr SxeMethodNode(ph7_class_instance *pThis)` |
 |     4 | 1399 | `{` |
-|   346 | 1400 | `	return SxeTypeOf(pThis) == SXE_ITER_NONE ? SxeNodeOf(pThis) : SxeFirstNode(pThis);` |
+|   378 | 1400 | `	return SxeTypeOf(pThis) == SXE_ITER_NONE ? SxeNodeOf(pThis) : SxeFirstNode(pThis);` |
 |     4 | 1401 | `}` |
 |     - | 1402 | `/* SimpleXMLElement::getName(): the first node's name, and the empty string for` |
 |     - | 1403 | ` * a question that finds none -- php answers "" rather than false. */` |
@@ -1424,21 +1424,21 @@ Coverage: 1413/1629 lines (86.74%)
 |    46 | 1414 | `	return PH7_OK;` |
 |    25 | 1415 | `}` |
 |     - | 1416 | `/* SimpleXMLElement::__toString(). */` |
-|   128 | 1417 | `SXE_METHOD(vm_builtin_SimpleXMLElement_toString)` |
+|   130 | 1417 | `SXE_METHOD(vm_builtin_SimpleXMLElement_toString)` |
 |     3 | 1418 | `{` |
-|   131 | 1419 | `	ph7_class_instance *pThis = SxeThis(pCtx);` |
+|   133 | 1419 | `	ph7_class_instance *pThis = SxeThis(pCtx);` |
 |     - | 1420 | `	SyBlob sText;` |
-|    64 | 1421 | `	(void)nArg; (void)apArg;` |
-|   131 | 1422 | `	if( pThis == 0 ){` |
+|    65 | 1421 | `	(void)nArg; (void)apArg;` |
+|   133 | 1422 | `	if( pThis == 0 ){` |
 |   ! 0 | 1423 | `		ph7_result_string(pCtx,"",0);` |
 |   ! 0 | 1424 | `		return PH7_OK;` |
 |     - | 1425 | `	}` |
-|   131 | 1426 | `	SyBlobInit(&sText,&pCtx->pVm->sAllocator);` |
-|   131 | 1427 | `	SxeToText(pCtx->pVm,pThis,&sText);` |
-|   131 | 1428 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sText),(int)SyBlobLength(&sText));` |
-|   131 | 1429 | `	SyBlobRelease(&sText);` |
-|   131 | 1430 | `	return PH7_OK;` |
-|    67 | 1431 | `}` |
+|   133 | 1426 | `	SyBlobInit(&sText,&pCtx->pVm->sAllocator);` |
+|   133 | 1427 | `	SxeToText(pCtx->pVm,pThis,&sText);` |
+|   133 | 1428 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sText),(int)SyBlobLength(&sText));` |
+|   133 | 1429 | `	SyBlobRelease(&sText);` |
+|   133 | 1430 | `	return PH7_OK;` |
+|    68 | 1431 | `}` |
 |     - | 1432 | `/* SimpleXMLElement::count(). */` |
 |    16 | 1433 | `SXE_METHOD(vm_builtin_SimpleXMLElement_count)` |
 |     1 | 1434 | `{` |
@@ -1471,33 +1471,33 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 1461 | ` * carried is not inherited through them, only through navigation.` |
 |     - | 1462 | ` */` |
 |   108 | 1463 | `static int SxeSubQuestion(ph7_context *pCtx,int nArg,ph7_value **apArg,int iType)` |
-|     4 | 1464 | `{` |
-|   112 | 1465 | `	ph7_class_instance *pThis = SxeThis(pCtx);` |
-|   112 | 1466 | `	xmlNodePtr pNode = pThis ? SxeMethodNode(pThis) : 0;` |
-|   112 | 1467 | `	phl_domnode *pNd = pThis ? SxeResOf(pThis) : 0;` |
-|   112 | 1468 | `	const char *zNs = 0;` |
-|   112 | 1469 | `	int nNs = 0,bPrefix = 0;` |
-|   112 | 1470 | `	if( pThis == 0 \|\| pNode == 0 ){` |
+|     3 | 1464 | `{` |
+|   111 | 1465 | `	ph7_class_instance *pThis = SxeThis(pCtx);` |
+|   111 | 1466 | `	xmlNodePtr pNode = pThis ? SxeMethodNode(pThis) : 0;` |
+|   111 | 1467 | `	phl_domnode *pNd = pThis ? SxeResOf(pThis) : 0;` |
+|   111 | 1468 | `	const char *zNs = 0;` |
+|   111 | 1469 | `	int nNs = 0,bPrefix = 0;` |
+|   111 | 1470 | `	if( pThis == 0 \|\| pNode == 0 ){` |
 |   ! 0 | 1471 | `		ph7_result_null(pCtx);` |
 |   ! 0 | 1472 | `		return PH7_OK;` |
 |     - | 1473 | `	}` |
-|   112 | 1474 | `	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){` |
+|   111 | 1474 | `	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){` |
 |    38 | 1475 | `		zNs = ph7_value_to_string(apArg[0],&nNs);` |
 |    18 | 1476 | `	}` |
-|   112 | 1477 | `	if( nArg > 1 ){` |
+|   111 | 1477 | `	if( nArg > 1 ){` |
 |    41 | 1478 | `		bPrefix = ph7_value_to_bool(apArg[1]);` |
 |    20 | 1479 | `	}` |
-|   112 | 1480 | `	return SxeResultObj(pCtx,SxeNew(pCtx->pVm,pThis->pClass,pNd ? pNd->pShell : 0,` |
+|   111 | 1480 | `	return SxeResultObj(pCtx,SxeNew(pCtx->pVm,pThis->pClass,pNd ? pNd->pShell : 0,` |
 |    54 | 1481 | `		pNode,iType,0,0,zNs,nNs,bPrefix));` |
-|    58 | 1482 | `}` |
+|    57 | 1482 | `}` |
 |    56 | 1483 | `SXE_METHOD(vm_builtin_SimpleXMLElement_children)` |
 |     3 | 1484 | `{` |
 |    59 | 1485 | `	return SxeSubQuestion(pCtx,nArg,apArg,SXE_ITER_CHILD);` |
 |     3 | 1486 | `}` |
 |    52 | 1487 | `SXE_METHOD(vm_builtin_SimpleXMLElement_attributes)` |
-|     4 | 1488 | `{` |
-|    56 | 1489 | `	return SxeSubQuestion(pCtx,nArg,apArg,SXE_ITER_ATTRLIST);` |
-|     4 | 1490 | `}` |
+|     3 | 1488 | `{` |
+|    55 | 1489 | `	return SxeSubQuestion(pCtx,nArg,apArg,SXE_ITER_ATTRLIST);` |
+|     3 | 1490 | `}` |
 |     - | 1491 |  |
 |     - | 1492 | `/*` |
 |     - | 1493 | ` * getNamespaces($recursive) -- the namespaces the node (and, recursively, its` |
@@ -1618,22 +1618,22 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 1608 | ` * something UNLINKED prints the bare element.` |
 |     - | 1609 | ` */` |
 |   122 | 1610 | `static int SxeDumpXml(ph7_class_instance *pThis,SyBlob *pOut)` |
-|     2 | 1611 | `{` |
-|   124 | 1612 | `	xmlNodePtr pNode = pThis ? SxeMethodNode(pThis) : 0;` |
-|   124 | 1613 | `	if( pNode == 0 ){` |
+|     1 | 1611 | `{` |
+|   123 | 1612 | `	xmlNodePtr pNode = pThis ? SxeMethodNode(pThis) : 0;` |
+|   123 | 1613 | `	if( pNode == 0 ){` |
 |     3 | 1614 | `		return 0;` |
 |     - | 1615 | `	}` |
-|   122 | 1616 | `	if( pNode->parent && (pNode->parent->type == XML_DOCUMENT_NODE` |
+|   121 | 1616 | `	if( pNode->parent && (pNode->parent->type == XML_DOCUMENT_NODE` |
 |    65 | 1617 | `	 \|\| pNode->parent->type == XML_HTML_DOCUMENT_NODE) ){` |
-|   112 | 1618 | `		xmlChar *zBuf = 0;` |
-|   112 | 1619 | `		int nBuf = 0;` |
-|   112 | 1620 | `		xmlDocDumpMemory(pNode->doc,&zBuf,&nBuf);` |
-|   112 | 1621 | `		if( zBuf == 0 ){` |
+|   111 | 1618 | `		xmlChar *zBuf = 0;` |
+|   111 | 1619 | `		int nBuf = 0;` |
+|   111 | 1620 | `		xmlDocDumpMemory(pNode->doc,&zBuf,&nBuf);` |
+|   111 | 1621 | `		if( zBuf == 0 ){` |
 |   ! 0 | 1622 | `			return 0;` |
 |     - | 1623 | `		}` |
-|   112 | 1624 | `		SyBlobAppend(pOut,(const char *)zBuf,(sxu32)nBuf);` |
-|   112 | 1625 | `		xmlFree(zBuf);` |
-|   112 | 1626 | `		return 1;` |
+|   111 | 1624 | `		SyBlobAppend(pOut,(const char *)zBuf,(sxu32)nBuf);` |
+|   111 | 1625 | `		xmlFree(zBuf);` |
+|   111 | 1626 | `		return 1;` |
 |     - | 1627 | `	}` |
 |     - | 1628 | `	{` |
 |     - | 1629 | `		/* One node, through the same output buffer ext/dom dumps a DTD's children` |
@@ -1657,20 +1657,20 @@ Coverage: 1413/1629 lines (86.74%)
 |    11 | 1647 | `		xmlBufferFree(pBuf);` |
 |    11 | 1648 | `		return 1;` |
 |     - | 1649 | `	}` |
-|    63 | 1650 | `}` |
+|    62 | 1650 | `}` |
 |   122 | 1651 | `SXE_METHOD(vm_builtin_SimpleXMLElement_asXML)` |
-|     2 | 1652 | `{` |
-|   124 | 1653 | `	ph7_class_instance *pThis = SxeThis(pCtx);` |
+|     1 | 1652 | `{` |
+|   123 | 1653 | `	ph7_class_instance *pThis = SxeThis(pCtx);` |
 |     - | 1654 | `	SyBlob sOut;` |
 |     - | 1655 | `	int bOk;` |
-|   124 | 1656 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
-|   124 | 1657 | `	bOk = SxeDumpXml(pThis,&sOut);` |
-|   124 | 1658 | `	if( !bOk ){` |
+|   123 | 1656 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
+|   123 | 1657 | `	bOk = SxeDumpXml(pThis,&sOut);` |
+|   123 | 1658 | `	if( !bOk ){` |
 |     3 | 1659 | `		SyBlobRelease(&sOut);` |
 |     3 | 1660 | `		ph7_result_bool(pCtx,0);` |
 |     3 | 1661 | `		return PH7_OK;` |
 |     - | 1662 | `	}` |
-|   122 | 1663 | `	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){` |
+|   121 | 1663 | `	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){` |
 |     - | 1664 | `		/* php writes through its OWN stream layer, so a wrapper and a userland` |
 |     - | 1665 | `		 * stream are valid destinations here exactly as they are for` |
 |     - | 1666 | `		 * DOMDocument::save(). */` |
@@ -1692,10 +1692,10 @@ Coverage: 1413/1629 lines (86.74%)
 |     3 | 1682 | `		ph7_result_bool(pCtx,bWrote);` |
 |     3 | 1683 | `		return PH7_OK;` |
 |     - | 1684 | `	}` |
-|   120 | 1685 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|   120 | 1686 | `	SyBlobRelease(&sOut);` |
-|   120 | 1687 | `	return PH7_OK;` |
-|    63 | 1688 | `}` |
+|   119 | 1685 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|   119 | 1686 | `	SyBlobRelease(&sOut);` |
+|   119 | 1687 | `	return PH7_OK;` |
+|    62 | 1688 | `}` |
 |     - | 1689 | `/*` |
 |     - | 1690 | ` * xpath(): php anchors the expression at the node the question finds, evaluates` |
 |     - | 1691 | ` * it with the prefixes registerXPathNamespace() left on THIS object, and takes` |
@@ -2213,60 +2213,60 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 2203 | `` * turns off and what `@` and error_reporting() screen -- rather than onto`` |
 |     - | 2204 | ` * stderr.  Answers the registered shell, or 0.` |
 |     - | 2205 | ` */` |
-|   166 | 2206 | `static phl_xmldoc * SxeParse(ph7_context *pCtx,const char *zSrc,int nLen,` |
+|   174 | 2206 | `static phl_xmldoc * SxeParse(ph7_context *pCtx,const char *zSrc,int nLen,` |
 |     - | 2207 | `	const char *zUrl,int iOpts,const char *zFn)` |
 |     4 | 2208 | `{` |
-|   170 | 2209 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   178 | 2209 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - | 2210 | `	xmlDocPtr pDoc;` |
 |     - | 2211 | `	phl_xmldoc *pShell;` |
-|   170 | 2212 | `	sxu32 nMark = PH7_LibxmlCaptureBeginRaw(pVm);` |
-|   170 | 2213 | `	pDoc = xmlReadMemory(zSrc,nLen,zUrl,0,iOpts);` |
-|   170 | 2214 | `	PH7_LibxmlCaptureEndOpts(pVm,nMark,zFn,iOpts);` |
-|   170 | 2215 | `	if( pDoc == 0 ){` |
+|   178 | 2212 | `	sxu32 nMark = PH7_LibxmlCaptureBeginRaw(pVm);` |
+|   178 | 2213 | `	pDoc = xmlReadMemory(zSrc,nLen,zUrl,0,iOpts);` |
+|   178 | 2214 | `	PH7_LibxmlCaptureEndOpts(pVm,nMark,zFn,iOpts);` |
+|   178 | 2215 | `	if( pDoc == 0 ){` |
 |    11 | 2216 | `		return 0;` |
 |     - | 2217 | `	}` |
-|   160 | 2218 | `	if( xmlDocGetRootElement(pDoc) == 0 ){` |
+|   168 | 2218 | `	if( xmlDocGetRootElement(pDoc) == 0 ){` |
 |     - | 2219 | `		/* php answers false for a document with no element to stand on. */` |
 |   ! 0 | 2220 | `		xmlFreeDoc(pDoc);` |
 |   ! 0 | 2221 | `		return 0;` |
 |     - | 2222 | `	}` |
-|   160 | 2223 | `	pShell = PH7_LibxmlNewDoc(pVm,pDoc);` |
-|   160 | 2224 | `	if( pShell == 0 ){` |
+|   168 | 2223 | `	pShell = PH7_LibxmlNewDoc(pVm,pDoc);` |
+|   168 | 2224 | `	if( pShell == 0 ){` |
 |   ! 0 | 2225 | `		xmlFreeDoc(pDoc);` |
 |   ! 0 | 2226 | `	}` |
-|   160 | 2227 | `	return pShell;` |
-|    87 | 2228 | `}` |
+|   168 | 2227 | `	return pShell;` |
+|    91 | 2228 | `}` |
 |     - | 2229 | `/* The class the two loaders build, screened the way php screens it: null is` |
 |     - | 2230 | ` * SimpleXMLElement, and anything that is not a SUBCLASS of it is a TypeError` |
 |     - | 2231 | ` * naming the argument. */` |
-|   170 | 2232 | `static ph7_class * SxeArgClass(ph7_context *pCtx,ph7_value *pVal,const char *zFn,sxi32 *pRc)` |
+|   184 | 2232 | `static ph7_class * SxeArgClass(ph7_context *pCtx,ph7_value *pVal,const char *zFn,sxi32 *pRc)` |
 |     4 | 2233 | `{` |
-|   174 | 2234 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   174 | 2235 | `	ph7_class *pBase = PH7_VmExtractClass(pVm,"SimpleXMLElement",` |
+|   188 | 2234 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   188 | 2235 | `	ph7_class *pBase = PH7_VmExtractClass(pVm,"SimpleXMLElement",` |
 |     - | 2236 | `		sizeof("SimpleXMLElement")-1,FALSE,0);` |
 |     - | 2237 | `	ph7_class *pClass;` |
-|   174 | 2238 | `	int nName = 0;` |
+|   188 | 2238 | `	int nName = 0;` |
 |     - | 2239 | `	const char *zName;` |
-|   174 | 2240 | `	*pRc = PH7_OK;` |
-|   174 | 2241 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_NULL) ){` |
-|   164 | 2242 | `		return pBase;` |
+|   188 | 2240 | `	*pRc = PH7_OK;` |
+|   188 | 2241 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_NULL) ){` |
+|   178 | 2242 | `		return pBase;` |
 |     - | 2243 | `	}` |
-|    12 | 2244 | `	zName = ph7_value_to_string(pVal,&nName);` |
-|    12 | 2245 | `	pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,TRUE,0);` |
-|    12 | 2246 | `	if( pClass == 0 \|\| pBase == 0 \|\| !PH7_VmInstanceOf(pClass,pBase) ){` |
+|    13 | 2244 | `	zName = ph7_value_to_string(pVal,&nName);` |
+|    13 | 2245 | `	pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,TRUE,0);` |
+|    13 | 2246 | `	if( pClass == 0 \|\| pBase == 0 \|\| !PH7_VmInstanceOf(pClass,pBase) ){` |
 |     7 | 2247 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
 |     - | 2248 | `			"%s(): Argument #2 ($class_name) must be a class name derived from "` |
 |     2 | 2249 | `			"SimpleXMLElement or null, %.*s given",zFn,nName,zName);` |
 |     5 | 2250 | `		return 0;` |
 |     - | 2251 | `	}` |
-|     8 | 2252 | `	return pClass;` |
-|    89 | 2253 | `}` |
+|     9 | 2252 | `	return pClass;` |
+|    96 | 2253 | `}` |
 |     - | 2254 | `/* The root object of a freshly parsed document. */` |
-|   152 | 2255 | `static ph7_class_instance * SxeRootObject(ph7_vm *pVm,ph7_class *pClass,phl_xmldoc *pShell,` |
+|   160 | 2255 | `static ph7_class_instance * SxeRootObject(ph7_vm *pVm,ph7_class *pClass,phl_xmldoc *pShell,` |
 |     - | 2256 | `	const char *zNs,int nNs,int bPrefix)` |
 |     4 | 2257 | `{` |
-|   156 | 2258 | `	xmlNodePtr pRoot = xmlDocGetRootElement((xmlDocPtr)pShell->pDoc);` |
-|   156 | 2259 | `	return SxeNew(pVm,pClass,pShell,pRoot,SXE_ITER_NONE,0,0,zNs,nNs,bPrefix);` |
+|   164 | 2258 | `	xmlNodePtr pRoot = xmlDocGetRootElement((xmlDocPtr)pShell->pDoc);` |
+|   164 | 2259 | `	return SxeNew(pVm,pClass,pShell,pRoot,SXE_ITER_NONE,0,0,zNs,nNs,bPrefix);` |
 |     4 | 2260 | `}` |
 |     - | 2261 | `/*` |
 |     - | 2262 | ` * The shared body of simplexml_load_string() / simplexml_load_file() and of` |
@@ -2274,20 +2274,20 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 2264 | ` * difference is what a failure IS -- false from the functions, and the` |
 |     - | 2265 | `` * constructor's `Exception: String could not be parsed as XML`.`` |
 |     - | 2266 | ` */` |
-|   166 | 2267 | `static int SxeLoad(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile,` |
+|   174 | 2267 | `static int SxeLoad(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile,` |
 |     - | 2268 | `	const char *zFn,ph7_class *pClass,ph7_class_instance *pInto)` |
 |     4 | 2269 | `{` |
-|   170 | 2270 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   170 | 2271 | `	int nSrc = 0,nNs = 0,bPrefix = 0,iOpts = 0;` |
-|   170 | 2272 | `	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";` |
-|   170 | 2273 | `	const char *zNs = 0;` |
+|   178 | 2270 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   178 | 2271 | `	int nSrc = 0,nNs = 0,bPrefix = 0,iOpts = 0;` |
+|   178 | 2272 | `	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";` |
+|   178 | 2273 | `	const char *zNs = 0;` |
 |     - | 2274 | `	phl_xmldoc *pShell;` |
 |     - | 2275 | `	SyBlob sBody,sPath;` |
-|   170 | 2276 | `	int iNsArg = pInto ? 3 : 3;` |
-|   170 | 2277 | `	if( nArg > (pInto ? 1 : 2) ){` |
+|   178 | 2276 | `	int iNsArg = pInto ? 3 : 3;` |
+|   178 | 2277 | `	if( nArg > (pInto ? 1 : 2) ){` |
 |     6 | 2278 | `		iOpts = ph7_value_to_int(apArg[pInto ? 1 : 2]);` |
 |     2 | 2279 | `	}` |
-|   170 | 2280 | `	if( nArg > iNsArg ){` |
+|   178 | 2280 | `	if( nArg > iNsArg ){` |
 |   ! 0 | 2281 | `		int n = 0;` |
 |   ! 0 | 2282 | `		const char *z = ph7_value_to_string(apArg[iNsArg],&n);` |
 |   ! 0 | 2283 | `		if( n > 0 ){` |
@@ -2295,10 +2295,10 @@ Coverage: 1413/1629 lines (86.74%)
 |   ! 0 | 2285 | `			nNs = n;` |
 |   ! 0 | 2286 | `		}` |
 |   ! 0 | 2287 | `	}` |
-|   170 | 2288 | `	if( nArg > iNsArg + 1 ){` |
+|   178 | 2288 | `	if( nArg > iNsArg + 1 ){` |
 |   ! 0 | 2289 | `		bPrefix = ph7_value_to_bool(apArg[iNsArg + 1]);` |
 |   ! 0 | 2290 | `	}` |
-|   170 | 2291 | `	if( bFile ){` |
+|   178 | 2291 | `	if( bFile ){` |
 |   ! 0 | 2292 | `		if( !PH7_DomReadFile(pCtx,zSrc,nSrc,zFn,&sBody,&sPath) ){` |
 |   ! 0 | 2293 | `			return 0;` |
 |     - | 2294 | `		}` |
@@ -2307,12 +2307,12 @@ Coverage: 1413/1629 lines (86.74%)
 |   ! 0 | 2297 | `		SyBlobRelease(&sBody);` |
 |   ! 0 | 2298 | `		SyBlobRelease(&sPath);` |
 |   ! 0 | 2299 | `	}else{` |
-|   170 | 2300 | `		pShell = SxeParse(pCtx,zSrc,nSrc,0,iOpts,zFn);` |
+|   178 | 2300 | `		pShell = SxeParse(pCtx,zSrc,nSrc,0,iOpts,zFn);` |
 |     - | 2301 | `	}` |
-|   170 | 2302 | `	if( pShell == 0 ){` |
+|   178 | 2302 | `	if( pShell == 0 ){` |
 |    11 | 2303 | `		return 0;` |
 |     - | 2304 | `	}` |
-|   160 | 2305 | `	if( pInto ){` |
+|   168 | 2305 | `	if( pInto ){` |
 |     - | 2306 | `		/* The constructor REPOINTS the object it was called on rather than` |
 |     - | 2307 | `		 * making a second one, so a subclass's own constructor may have run` |
 |     - | 2308 | `		 * first and its state survives. */` |
@@ -2337,14 +2337,14 @@ Coverage: 1413/1629 lines (86.74%)
 |     6 | 2327 | `		return 1;` |
 |     - | 2328 | `	}` |
 |     - | 2329 | `	{` |
-|   156 | 2330 | `		ph7_class_instance *pObj = SxeRootObject(pVm,pClass,pShell,zNs,nNs,bPrefix);` |
-|   156 | 2331 | `		if( pObj == 0 ){` |
+|   164 | 2330 | `		ph7_class_instance *pObj = SxeRootObject(pVm,pClass,pShell,zNs,nNs,bPrefix);` |
+|   164 | 2331 | `		if( pObj == 0 ){` |
 |   ! 0 | 2332 | `			return 0;` |
 |     - | 2333 | `		}` |
-|   156 | 2334 | `		SxeResultObj(pCtx,pObj);` |
-|   156 | 2335 | `		return 1;` |
+|   164 | 2334 | `		SxeResultObj(pCtx,pObj);` |
+|   164 | 2335 | `		return 1;` |
 |     - | 2336 | `	}` |
-|    87 | 2337 | `}` |
+|    91 | 2337 | `}` |
 |     8 | 2338 | `SXE_METHOD(vm_builtin_SimpleXMLElement_construct)` |
 |     2 | 2339 | `{` |
 |    10 | 2340 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -2357,21 +2357,21 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 2347 | `	}` |
 |     5 | 2348 | `	return PH7_VmThrowException(pCtx,"Exception","String could not be parsed as XML");` |
 |     6 | 2349 | `}` |
-|   162 | 2350 | `static int SxeLoadFunc(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile,const char *zFn)` |
+|   170 | 2350 | `static int SxeLoadFunc(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile,const char *zFn)` |
 |     4 | 2351 | `{` |
 |     - | 2352 | `	sxi32 rc;` |
-|   166 | 2353 | `	ph7_class *pClass = SxeArgClass(pCtx,nArg > 1 ? apArg[1] : 0,zFn,&rc);` |
-|   166 | 2354 | `	if( pClass == 0 ){` |
+|   174 | 2353 | `	ph7_class *pClass = SxeArgClass(pCtx,nArg > 1 ? apArg[1] : 0,zFn,&rc);` |
+|   174 | 2354 | `	if( pClass == 0 ){` |
 |     5 | 2355 | `		return rc;` |
 |     - | 2356 | `	}` |
-|   162 | 2357 | `	if( !SxeLoad(pCtx,nArg,apArg,bFile,zFn,pClass,0) ){` |
+|   170 | 2357 | `	if( !SxeLoad(pCtx,nArg,apArg,bFile,zFn,pClass,0) ){` |
 |     7 | 2358 | `		ph7_result_bool(pCtx,0);` |
 |     3 | 2359 | `	}` |
-|   162 | 2360 | `	return PH7_OK;` |
-|    85 | 2361 | `}` |
-|   162 | 2362 | `static int vm_builtin_simplexml_load_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   170 | 2360 | `	return PH7_OK;` |
+|    89 | 2361 | `}` |
+|   170 | 2362 | `static int vm_builtin_simplexml_load_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     4 | 2363 | `{` |
-|   166 | 2364 | `	return SxeLoadFunc(pCtx,nArg,apArg,0,"simplexml_load_string");` |
+|   174 | 2364 | `	return SxeLoadFunc(pCtx,nArg,apArg,0,"simplexml_load_string");` |
 |     4 | 2365 | `}` |
 |   ! 0 | 2366 | `static int vm_builtin_simplexml_load_file(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |   ! 0 | 2367 | `{` |
@@ -2389,264 +2389,298 @@ Coverage: 1413/1629 lines (86.74%)
 |     - | 2379 | ` * warns for anything else.  It caches nothing -- two imports of one document` |
 |     - | 2380 | ` * are two objects, unlike dom_import_simplexml's one.` |
 |     - | 2381 | ` */` |
-|    10 | 2382 | `static int vm_builtin_simplexml_import_dom(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2383 | `{` |
-|    11 | 2384 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    16 | 2382 | `static int vm_builtin_simplexml_import_dom(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 2383 | `{` |
+|    18 | 2384 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - | 2385 | `	ph7_class_instance *pArg;` |
 |     - | 2386 | `	ph7_value *pRes;` |
 |     - | 2387 | `	phl_domnode *pNd;` |
 |     - | 2388 | `	xmlNodePtr pNode;` |
 |     - | 2389 | `	ph7_class *pClass;` |
 |     - | 2390 | `	sxi32 rc;` |
-|    11 | 2391 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|    18 | 2391 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
 |   ! 0 | 2392 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |     - | 2393 | `			"simplexml_import_dom(): Argument #1 ($node) must be a valid XML node");` |
 |     - | 2394 | `	}` |
-|    11 | 2395 | `	pArg = (ph7_class_instance *)apArg[0]->x.pOther;` |
-|    11 | 2396 | `	pRes = pArg ? PH7_NativeAttr(pArg,"__res") : 0;` |
-|    11 | 2397 | `	if( pRes == 0 \|\| (pRes->iFlags & MEMOBJ_RES) == 0 ){` |
+|    18 | 2395 | `	pArg = (ph7_class_instance *)apArg[0]->x.pOther;` |
+|    18 | 2396 | `	pRes = pArg ? PH7_NativeAttr(pArg,"__res") : 0;` |
+|    18 | 2397 | `	if( pRes == 0 \|\| (pRes->iFlags & MEMOBJ_RES) == 0 ){` |
 |     3 | 2398 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |     - | 2399 | `			"simplexml_import_dom(): Argument #1 ($node) must be a valid XML node");` |
 |     - | 2400 | `	}` |
-|     9 | 2401 | `	pClass = SxeArgClass(pCtx,nArg > 1 ? apArg[1] : 0,"simplexml_import_dom",&rc);` |
-|     9 | 2402 | `	if( pClass == 0 ){` |
+|    16 | 2401 | `	pClass = SxeArgClass(pCtx,nArg > 1 ? apArg[1] : 0,"simplexml_import_dom",&rc);` |
+|    16 | 2402 | `	if( pClass == 0 ){` |
 |   ! 0 | 2403 | `		return rc;` |
 |     - | 2404 | `	}` |
-|     9 | 2405 | `	pNd = (phl_domnode *)pRes->x.pOther;` |
-|     9 | 2406 | `	pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|     9 | 2407 | `	if( pNode && (pNode->type == XML_DOCUMENT_NODE \|\| pNode->type == XML_HTML_DOCUMENT_NODE) ){` |
-|     9 | 2408 | `		pNode = xmlDocGetRootElement((xmlDocPtr)pNode);` |
-|     4 | 2409 | `	}` |
-|     8 | 2410 | `	if( pNode == 0` |
-|     8 | 2411 | `	 \|\| (pNode->type != XML_ELEMENT_NODE && pNode->type != XML_ATTRIBUTE_NODE) ){` |
+|    16 | 2405 | `	pNd = (phl_domnode *)pRes->x.pOther;` |
+|    16 | 2406 | `	pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|    16 | 2407 | `	if( pNode && (pNode->type == XML_DOCUMENT_NODE \|\| pNode->type == XML_HTML_DOCUMENT_NODE) ){` |
+|    16 | 2408 | `		pNode = xmlDocGetRootElement((xmlDocPtr)pNode);` |
+|     7 | 2409 | `	}` |
+|    14 | 2410 | `	if( pNode == 0` |
+|    15 | 2411 | `	 \|\| (pNode->type != XML_ELEMENT_NODE && pNode->type != XML_ATTRIBUTE_NODE) ){` |
 |     3 | 2412 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Invalid Nodetype to import");` |
 |     3 | 2413 | `		ph7_result_null(pCtx);` |
 |     3 | 2414 | `		return PH7_OK;` |
 |     - | 2415 | `	}` |
-|     7 | 2416 | `	return SxeResultObj(pCtx,SxeNew(pVm,pClass,pNd->pShell,pNode,SXE_ITER_NONE,0,0,0,0,0));` |
-|     6 | 2417 | `}` |
+|    14 | 2416 | `	return SxeResultObj(pCtx,SxeNew(pVm,pClass,pNd->pShell,pNode,SXE_ITER_NONE,0,0,0,0,0));` |
+|    10 | 2417 | `}` |
 |     - | 2418 | `/*` |
-|     - | 2419 | ` * dom_import_simplexml(object $node): DOMAttr\|DOMElement -- ext/dom's half of` |
-|     - | 2420 | ` * the same door, declared by that extension and bodied here because it is a` |
-|     - | 2421 | ` * SimpleXML object it takes apart.` |
-|     - | 2422 | ` *` |
-|     - | 2423 | ` * Unlike its opposite this one has an IDENTITY: two imports of the same node` |
-|     - | 2424 | ` * are the same DOM object, because ext/dom caches its wrappers per document.` |
-|     - | 2425 | ` */` |
-|    10 | 2426 | `static int vm_builtin_dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2427 | `{` |
-|     - | 2428 | `	ph7_class_instance *pArg;` |
-|     - | 2429 | `	phl_domnode *pNd;` |
-|     - | 2430 | `	xmlNodePtr pNode;` |
-|     - | 2431 | `	ph7_class_instance *pObj;` |
-|     - | 2432 | `	ph7_value sRes;` |
-|    11 | 2433 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
-|   ! 0 | 2434 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|     - | 2435 | `			"dom_import_simplexml(): Argument #1 ($node) is not a valid node type");` |
-|     - | 2436 | `	}` |
-|    11 | 2437 | `	pArg = (ph7_class_instance *)apArg[0]->x.pOther;` |
-|    11 | 2438 | `	pNd = pArg ? SxeResOf(pArg) : 0;` |
-|    11 | 2439 | `	pNode = pArg ? SxeMethodNode(pArg) : 0;` |
-|    10 | 2440 | `	if( pNd == 0 \|\| pNode == 0` |
-|     9 | 2441 | `	 \|\| (pNode->type != XML_ELEMENT_NODE && pNode->type != XML_ATTRIBUTE_NODE) ){` |
-|     3 | 2442 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|     - | 2443 | `			"dom_import_simplexml(): Argument #1 ($node) is not a valid node type");` |
-|     - | 2444 | `	}` |
-|     9 | 2445 | `	pObj = PH7_DomWrapForeign(pCtx->pVm,pNd->pShell,pNode);` |
-|     9 | 2446 | `	if( pObj == 0 ){` |
-|   ! 0 | 2447 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 2448 | `		return PH7_OK;` |
+|     - | 2419 | ` * dom_import_simplexml(object $node): DOMAttr\|DOMElement   -- the 2004 tree` |
+|     - | 2420 | ` * Dom\import_simplexml(object $node): Dom\Attr\|Dom\Element -- php 8.4's` |
+|     - | 2421 | ` *` |
+|     - | 2422 | ` * ext/dom's half of the same door, declared by that extension and bodied here` |
+|     - | 2423 | ` * because it is a SimpleXML object it takes apart. php 8.4 put a second class` |
+|     - | 2424 | ` * tree over the same libxml nodes and gave it its own door rather than a flag,` |
+|     - | 2425 | ` * so this is one body under two names.` |
+|     - | 2426 | ` *` |
+|     - | 2427 | ` * Unlike its opposite this one has an IDENTITY: two imports of the same node` |
+|     - | 2428 | ` * are the same DOM object, because ext/dom caches its wrappers per document.` |
+|     - | 2429 | ` *` |
+|     - | 2430 | ` * And the two doors do not share a tree. The FIRST one to run over a document` |
+|     - | 2431 | ` * latches it, and the other then refuses that whole document -- every node of` |
+|     - | 2432 | `` * it, not the one asked about -- with `must not be already imported as a ...`.`` |
+|     - | 2433 | ``  * A document made by php 8.4's producers arrives latched; a `new DOMDocument` `` |
+|     - | 2434 | ` * does not, so the modern door still answers there, and what it answers is a` |
+|     - | 2435 | `` * `Dom\Element` whose `ownerDocument` is that DOMDocument. The wrapper class is`` |
+|     - | 2436 | ` * the door's choice and the owner is the cache's, and they really can disagree.` |
+|     - | 2437 | ` */` |
+|    42 | 2438 | `static int SxeDomImport(ph7_context *pCtx,int nArg,ph7_value **apArg,int bModern)` |
+|     2 | 2439 | `{` |
+|    44 | 2440 | `	const char *zFn = bModern ? "Dom\\import_simplexml" : "dom_import_simplexml";` |
+|     - | 2441 | `	ph7_class_instance *pArg;` |
+|     - | 2442 | `	phl_domnode *pNd;` |
+|     - | 2443 | `	xmlNodePtr pNode;` |
+|     - | 2444 | `	ph7_class_instance *pObj;` |
+|     - | 2445 | `	ph7_value sRes;` |
+|    44 | 2446 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|   ! 0 | 2447 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|   ! 0 | 2448 | `			"%s(): Argument #1 ($node) is not a valid node type",zFn);` |
 |     - | 2449 | `	}` |
-|     9 | 2450 | `	PH7_MemObjInit(pCtx->pVm,&sRes);` |
-|     9 | 2451 | `	sRes.x.pOther = pObj;` |
-|     9 | 2452 | `	sRes.iFlags = MEMOBJ_OBJ;` |
-|     9 | 2453 | `	ph7_result_value(pCtx,&sRes);   /* takes its own reference... */` |
-|     9 | 2454 | `	PH7_ClassInstanceUnref(pObj);   /* ...and the wrap's goes back */` |
-|     9 | 2455 | `	return PH7_OK;` |
-|     6 | 2456 | `}` |
-|     - | 2457 |  |
-|     - | 2458 | `/* ===== Install ===== */` |
-|     - | 2459 |  |
-|     - | 2460 | `/*` |
-|     - | 2461 | `` * `clone $x` on a SimpleXML object copies the DOCUMENT, exactly as ext/dom's`` |
-|     - | 2462 | ` * document clone does: php's SimpleXML clone_obj duplicates the tree so a write` |
-|     - | 2463 | ` * through the copy does not reach the original.` |
-|     - | 2464 | ` */` |
-|   ! 0 | 2465 | `static void SxeClone(ph7_vm *pVm,ph7_class_instance *pCopy,ph7_class_instance *pSrc)` |
-|   ! 0 | 2466 | `{` |
-|   ! 0 | 2467 | `	phl_domnode *pNd = SxeResOf(pSrc);` |
-|   ! 0 | 2468 | `	xmlDocPtr pDoc = pNd && pNd->pShell ? (xmlDocPtr)pNd->pShell->pDoc : 0;` |
-|   ! 0 | 2469 | `	xmlDocPtr pNew = pDoc ? xmlCopyDoc(pDoc,1) : 0;` |
-|   ! 0 | 2470 | `	phl_xmldoc *pShell = pNew ? PH7_LibxmlNewDoc(pVm,pNew) : 0;` |
-|     - | 2471 | `	phl_domnode *pRes;` |
-|     - | 2472 | `	ph7_value sVal;` |
-|   ! 0 | 2473 | `	if( pShell == 0 ){` |
-|   ! 0 | 2474 | `		if( pNew ){` |
-|   ! 0 | 2475 | `			xmlFreeDoc(pNew);` |
-|   ! 0 | 2476 | `		}` |
-|   ! 0 | 2477 | `		return;` |
-|     - | 2478 | `	}` |
-|   ! 0 | 2479 | `	pRes = (phl_domnode *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_domnode));` |
-|   ! 0 | 2480 | `	if( pRes == 0 ){` |
-|   ! 0 | 2481 | `		return;` |
-|     - | 2482 | `	}` |
-|   ! 0 | 2483 | `	pRes->pShell = pShell;` |
-|     - | 2484 | `	/* Only the ROOT survives a document copy identifiably; php's clone of a` |
-|     - | 2485 | `	 * deeper object stands on the copy's root too. */` |
-|   ! 0 | 2486 | `	pRes->pNode = xmlDocGetRootElement(pNew);` |
-|   ! 0 | 2487 | `	PH7_MemObjInit(pVm,&sVal);` |
-|   ! 0 | 2488 | `	sVal.x.pOther = pRes;` |
-|   ! 0 | 2489 | `	sVal.iFlags = MEMOBJ_RES;` |
-|   ! 0 | 2490 | `	PH7_NativeSetProp(pVm,pCopy,SXE_RES,sizeof(SXE_RES)-1,&sVal);` |
-|   ! 0 | 2491 | `}` |
-|     - | 2492 | `/*` |
-|     - | 2493 | ` * php's compare handler for the class -- and it is NODE IDENTITY, not the` |
-|     - | 2494 | ` * property table the rest of its surface shows.` |
-|     - | 2495 | ` *` |
-|     - | 2496 | `` * So `$x->kid == $x->kid` is true (both stand on the same element and ask the`` |
-|     - | 2497 | ` * same question of it) while two documents parsed from the SAME BYTES are never` |
-|     - | 2498 | ` * equal, and neither are two objects over different nodes however alike their` |
-|     - | 2499 | ` * tables. An object with no node equals another with no node and nothing else.` |
-|     - | 2500 | ` */` |
-|    12 | 2501 | `static void SxeCmp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)` |
-|     1 | 2502 | `{` |
-|     - | 2503 | `	ph7_class_instance *pOther;` |
-|     - | 2504 | `	xmlNodePtr pA,pB;` |
-|     6 | 2505 | `	(void)pVm;` |
-|    13 | 2506 | `	pOther = pCtx->pOther;` |
-|    13 | 2507 | `	if( pOther == 0 \|\| PH7_NativeAttr(pOther,SXE_RES) == 0 ){` |
-|     7 | 2508 | `		return;` |
-|     - | 2509 | `	}` |
-|     7 | 2510 | `	pA = SxeNodeOf(pThis);` |
-|     7 | 2511 | `	pB = SxeNodeOf(pOther);` |
-|     7 | 2512 | `	pCtx->bAnswered = 1;` |
-|     7 | 2513 | `	pCtx->iResult = (pA == 0 && pB == 0) ? 0 : (pA == pB ? 0 : 1);` |
-|     7 | 2514 | `}` |
-|  7925 | 2515 | `PH7_PRIVATE sxi32 PH7_VmInstallSimpleXml(ph7_vm *pVm)` |
-|     5 | 2516 | `{` |
-|     - | 2517 | `	static const struct {` |
-|     - | 2518 | `		const char *zName;` |
-|     - | 2519 | `		ProchHostFunction xFunc;` |
-|     - | 2520 | `	} aFunc[] = {` |
-|     - | 2521 | `		{ "simplexml_load_file",   vm_builtin_simplexml_load_file   },` |
-|     - | 2522 | `		{ "simplexml_load_string", vm_builtin_simplexml_load_string },` |
-|     - | 2523 | `		{ "simplexml_import_dom",  vm_builtin_simplexml_import_dom  },` |
-|     - | 2524 | `		/* ext/dom's own name for the other direction. */` |
-|     - | 2525 | `		{ "dom_import_simplexml",  vm_builtin_dom_import_simplexml  },` |
-|     - | 2526 | `	};` |
-|     - | 2527 | `	/*` |
-|     - | 2528 | `	 * The engine slots. php's SimpleXMLElement declares NO property -- Reflection` |
-|     - | 2529 | ``	 * lists none and `property_exists()` is false for every name -- so each of`` |
-|     - | 2530 | `	 * these is PH7_MOD_HIDDEN and the whole object shows the document instead.` |
-|     - | 2531 | `	 */` |
-|     - | 2532 | `	static const PH7_NativePropDef aProp[] = {` |
-|     - | 2533 | `		{ SXE_RES,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 2534 | `		{ SXE_IT,   PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, 0 },` |
-|     - | 2535 | `		{ SXE_NM,   PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 2536 | `		{ SXE_NS,   PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 2537 | `		{ SXE_ISP,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, 0 },` |
-|     - | 2538 | `		{ SXE_CUR,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 2539 | `		{ SXE_XPNS, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 2540 | `	};` |
-|     - | 2541 | `	/*` |
-|     - | 2542 | `	 * php's own list, in php's own order -- which is what Reflection reports and` |
-|     - | 2543 | ``	 * what `get_class_methods()` answers. Every return type is TENTATIVE (`@`):`` |
-|     - | 2544 | `	 * php's stubs mark the whole class that way, so a subclass may still declare` |
-|     - | 2545 | ``	 * `children()` returning something else without a fatal.`` |
-|     - | 2546 | `	 */` |
-|     - | 2547 | `	static const PH7_NativeMethodDef aMethod[] = {` |
-|     - | 2548 | `		{ "xpath", PH7_MOD_PUBLIC, "string $expression", "@array\|false\|null",` |
-|     - | 2549 | `		  vm_builtin_SimpleXMLElement_xpath },` |
-|     - | 2550 | `		{ "registerXPathNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace",` |
-|     - | 2551 | `		  "@bool", vm_builtin_SimpleXMLElement_registerXPathNamespace },` |
-|     - | 2552 | `		{ "asXML", PH7_MOD_PUBLIC, "?string $filename = null", "@string\|bool",` |
-|     - | 2553 | `		  vm_builtin_SimpleXMLElement_asXML },` |
-|     - | 2554 | `		{ "saveXML", PH7_MOD_PUBLIC, "?string $filename = null", "@string\|bool",` |
-|     - | 2555 | `		  vm_builtin_SimpleXMLElement_asXML },` |
-|     - | 2556 | `		{ "getNamespaces", PH7_MOD_PUBLIC, "bool $recursive = false", "@array",` |
-|     - | 2557 | `		  vm_builtin_SimpleXMLElement_getNamespaces },` |
-|     - | 2558 | `		{ "getDocNamespaces", PH7_MOD_PUBLIC, "bool $recursive = false, bool $fromRoot = true",` |
-|     - | 2559 | `		  "@array\|false", vm_builtin_SimpleXMLElement_getDocNamespaces },` |
-|     - | 2560 | `		{ "children", PH7_MOD_PUBLIC, "?string $namespaceOrPrefix = null, bool $isPrefix = false",` |
-|     - | 2561 | `		  "@?SimpleXMLElement", vm_builtin_SimpleXMLElement_children },` |
-|     - | 2562 | `		{ "attributes", PH7_MOD_PUBLIC, "?string $namespaceOrPrefix = null, bool $isPrefix = false",` |
-|     - | 2563 | `		  "@?SimpleXMLElement", vm_builtin_SimpleXMLElement_attributes },` |
-|     - | 2564 | `		{ "__construct", PH7_MOD_PUBLIC,` |
-|     - | 2565 | `		  "string $data, int $options = 0, bool $dataIsURL = false, "` |
-|     - | 2566 | `		  "string $namespaceOrPrefix = '', bool $isPrefix = false", "",` |
-|     - | 2567 | `		  vm_builtin_SimpleXMLElement_construct },` |
-|     - | 2568 | `		{ "addChild", PH7_MOD_PUBLIC,` |
-|     - | 2569 | `		  "string $qualifiedName, ?string $value = null, ?string $namespace = null",` |
-|     - | 2570 | `		  "@?SimpleXMLElement", vm_builtin_SimpleXMLElement_addChild },` |
-|     - | 2571 | `		{ "addAttribute", PH7_MOD_PUBLIC,` |
-|     - | 2572 | `		  "string $qualifiedName, string $value, ?string $namespace = null", "@void",` |
-|     - | 2573 | `		  vm_builtin_SimpleXMLElement_addAttribute },` |
-|     - | 2574 | `		{ "getName", PH7_MOD_PUBLIC, "", "@string", vm_builtin_SimpleXMLElement_getName },` |
-|     - | 2575 | `		{ "__toString", PH7_MOD_PUBLIC, "", "string", vm_builtin_SimpleXMLElement_toString },` |
-|     - | 2576 | `		{ "__debugInfo", PH7_MOD_PUBLIC, "", "?array", vm_builtin_SimpleXMLElement_debugInfo },` |
-|     - | 2577 | `		{ "count", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SimpleXMLElement_count },` |
-|     - | 2578 | `		{ "rewind", PH7_MOD_PUBLIC, "", "@void", vm_builtin_SimpleXMLElement_rewind },` |
-|     - | 2579 | `		{ "valid", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SimpleXMLElement_valid },` |
-|     - | 2580 | `		{ "current", PH7_MOD_PUBLIC, "", "@SimpleXMLElement",` |
-|     - | 2581 | `		  vm_builtin_SimpleXMLElement_current },` |
-|     - | 2582 | `		{ "key", PH7_MOD_PUBLIC, "", "@string", vm_builtin_SimpleXMLElement_key },` |
-|     - | 2583 | `		{ "next", PH7_MOD_PUBLIC, "", "@void", vm_builtin_SimpleXMLElement_next },` |
-|     - | 2584 | `		{ "hasChildren", PH7_MOD_PUBLIC, "", "@bool",` |
-|     - | 2585 | `		  vm_builtin_SimpleXMLElement_hasChildren },` |
-|     - | 2586 | `		{ "getChildren", PH7_MOD_PUBLIC, "", "@?SimpleXMLElement",` |
-|     - | 2587 | `		  vm_builtin_SimpleXMLElement_getChildren },` |
-|     - | 2588 | `	};` |
-|     - | 2589 | `	/*` |
-|     - | 2590 | `	 * php's class list. SimpleXMLElement declares Stringable, Countable and` |
-|     - | 2591 | ``	 * RecursiveIterator -- and NOT ArrayAccess, which is why `$x['a']` is a`` |
-|     - | 2592 | ``	 * dimension handler and `$x instanceof ArrayAccess` is false; and not`` |
-|     - | 2593 | `	 * JsonSerializable, because json_encode() reads its property table like any` |
-|     - | 2594 | `	 * other object's.` |
-|     - | 2595 | `	 *` |
-|     - | 2596 | `	 * PH7_CLASS_NUM_AS_STRING is php's cast_object answering IS_LONG/IS_DOUBLE` |
-|     - | 2597 | `	 * from the node's text, and PH7_CLASS_VARS_PRESENT is its get_properties` |
-|     - | 2598 | `	 * answering the get_object_vars purpose too -- the two places SimpleXML does` |
-|     - | 2599 | `	 * not behave like every other native class here.` |
-|     - | 2600 | `	 *` |
-|     - | 2601 | `	 * SimpleXMLIterator adds nothing: php declares it as an empty subclass, kept` |
-|     - | 2602 | `	 * because RecursiveIteratorIterator over one is how the class is used.` |
-|     - | 2603 | `	 */` |
-|     - | 2604 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|     - | 2605 | `		{ "SimpleXMLElement", 0, "Stringable,Countable,RecursiveIterator",` |
-|     - | 2606 | `		  PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NUM_AS_STRING\|PH7_CLASS_VARS_PRESENT,` |
-|     - | 2607 | `		  aMethod, SX_ARRAYSIZE(aMethod), 0, 0, aProp, SX_ARRAYSIZE(aProp),` |
-|     - | 2608 | `		  0, 0, SxePresent },` |
-|     - | 2609 | `		{ "SimpleXMLIterator", "SimpleXMLElement", 0,` |
-|     - | 2610 | `		  PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NUM_AS_STRING\|PH7_CLASS_VARS_PRESENT,` |
-|     - | 2611 | `		  0, 0, 0, 0, 0, 0, 0, 0, SxePresent },` |
-|     - | 2612 | `	};` |
-|     - | 2613 | `	sxi32 rc;` |
-|     - | 2614 | `	sxu32 n;` |
-| 39630 | 2615 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
-| 31705 | 2616 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 15833 | 2617 | `	}` |
-|  7930 | 2618 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|  7930 | 2619 | `	if( rc == SXRET_OK ){` |
-|     - | 2620 | `		/* The four handlers php gives the class, assigned on the mounted class` |
-|     - | 2621 | `		 * because PH7_NativeClassSpec carries no field for any of them. Stated on` |
-|     - | 2622 | `		 * the ROOT only: the engine walks the base chain, which is php's own` |
-|     - | 2623 | `		 * handler inheritance, so SimpleXMLIterator and a userland subclass reach` |
-|     - | 2624 | `		 * these. */` |
-|  7930 | 2625 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"SimpleXMLElement",` |
-|     - | 2626 | `			sizeof("SimpleXMLElement")-1,FALSE,0);` |
-|  7930 | 2627 | `		if( pClass ){` |
-|  7930 | 2628 | `			pClass->xDim = SxeDimHook;` |
-|  7930 | 2629 | `			pClass->xClone = SxeClone;` |
-|  7930 | 2630 | `			pClass->xBool = SxeBool;` |
-|  7930 | 2631 | `			pClass->xCmp = SxeCmp;` |
-|  3957 | 2632 | `		}` |
-|  7930 | 2633 | `		PH7_NativeClassInstallPropHook(&(*pVm),"SimpleXMLElement",SxePropHook);` |
-|  3957 | 2634 | `	}` |
-|  7930 | 2635 | `	return rc;` |
-|     5 | 2636 | `}` |
-|     - | 2637 |  |
-|     - | 2638 | `#else` |
-|     - | 2639 | `/* Ensure non-empty translation unit when libxml is disabled (MSVC C4206) */` |
-|     - | 2640 | `typedef int vm_simplexml_unused;` |
-|     - | 2641 | `#endif /* PH7_ENABLE_LIBXML */` |
-|     - | 2642 |  |
+|    44 | 2450 | `	pArg = (ph7_class_instance *)apArg[0]->x.pOther;` |
+|    44 | 2451 | `	pNd = pArg ? SxeResOf(pArg) : 0;` |
+|    44 | 2452 | `	pNode = pArg ? SxeMethodNode(pArg) : 0;` |
+|    42 | 2453 | `	if( pNd == 0 \|\| pNode == 0` |
+|    40 | 2454 | `	 \|\| (pNode->type != XML_ELEMENT_NODE && pNode->type != XML_ATTRIBUTE_NODE) ){` |
+|     8 | 2455 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|     2 | 2456 | `			"%s(): Argument #1 ($node) is not a valid node type",zFn);` |
+|     - | 2457 | `	}` |
+|    40 | 2458 | `	if( pNd->pShell ){` |
+|    40 | 2459 | `		int iWant = bModern ? 2 : 1;` |
+|    40 | 2460 | `		if( pNd->pShell->iSxFamily != 0 && pNd->pShell->iSxFamily != iWant ){` |
+|    19 | 2461 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
+|     - | 2462 | `				"%s(): Argument #1 ($node) must not be already imported as a %s",` |
+|     6 | 2463 | `				zFn,bModern ? "DOMNode" : "Dom\\Node");` |
+|     - | 2464 | `		}` |
+|     - | 2465 | `		/* The latch is taken even when the cache answers with the OTHER tree's` |
+|     - | 2466 | `		 * object: php sets it before it looks, so a modern import that hands` |
+|     - | 2467 | `		 * back a DOMElement still shuts the 2004 door behind it. */` |
+|    28 | 2468 | `		pNd->pShell->iSxFamily = iWant;` |
+|    13 | 2469 | `	}` |
+|    28 | 2470 | `	pObj = PH7_DomWrapForeign(pCtx->pVm,pNd->pShell,pNode,bModern);` |
+|    28 | 2471 | `	if( pObj == 0 ){` |
+|   ! 0 | 2472 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 2473 | `		return PH7_OK;` |
+|     - | 2474 | `	}` |
+|    28 | 2475 | `	PH7_MemObjInit(pCtx->pVm,&sRes);` |
+|    28 | 2476 | `	sRes.x.pOther = pObj;` |
+|    28 | 2477 | `	sRes.iFlags = MEMOBJ_OBJ;` |
+|    28 | 2478 | `	ph7_result_value(pCtx,&sRes);   /* takes its own reference... */` |
+|    28 | 2479 | `	PH7_ClassInstanceUnref(pObj);   /* ...and the wrap's goes back */` |
+|    28 | 2480 | `	return PH7_OK;` |
+|    23 | 2481 | `}` |
+|    22 | 2482 | `static int vm_builtin_dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 2483 | `{` |
+|    24 | 2484 | `	return SxeDomImport(pCtx,nArg,apArg,0);` |
+|     2 | 2485 | `}` |
+|    20 | 2486 | `static int vm_builtin_Dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2487 | `{` |
+|    21 | 2488 | `	return SxeDomImport(pCtx,nArg,apArg,1);` |
+|     1 | 2489 | `}` |
+|     - | 2490 |  |
+|     - | 2491 | `/* ===== Install ===== */` |
+|     - | 2492 |  |
+|     - | 2493 | `/*` |
+|     - | 2494 | `` * `clone $x` on a SimpleXML object copies the DOCUMENT, exactly as ext/dom's`` |
+|     - | 2495 | ` * document clone does: php's SimpleXML clone_obj duplicates the tree so a write` |
+|     - | 2496 | ` * through the copy does not reach the original.` |
+|     - | 2497 | ` */` |
+|   ! 0 | 2498 | `static void SxeClone(ph7_vm *pVm,ph7_class_instance *pCopy,ph7_class_instance *pSrc)` |
+|   ! 0 | 2499 | `{` |
+|   ! 0 | 2500 | `	phl_domnode *pNd = SxeResOf(pSrc);` |
+|   ! 0 | 2501 | `	xmlDocPtr pDoc = pNd && pNd->pShell ? (xmlDocPtr)pNd->pShell->pDoc : 0;` |
+|   ! 0 | 2502 | `	xmlDocPtr pNew = pDoc ? xmlCopyDoc(pDoc,1) : 0;` |
+|   ! 0 | 2503 | `	phl_xmldoc *pShell = pNew ? PH7_LibxmlNewDoc(pVm,pNew) : 0;` |
+|     - | 2504 | `	phl_domnode *pRes;` |
+|     - | 2505 | `	ph7_value sVal;` |
+|   ! 0 | 2506 | `	if( pShell == 0 ){` |
+|   ! 0 | 2507 | `		if( pNew ){` |
+|   ! 0 | 2508 | `			xmlFreeDoc(pNew);` |
+|   ! 0 | 2509 | `		}` |
+|   ! 0 | 2510 | `		return;` |
+|     - | 2511 | `	}` |
+|   ! 0 | 2512 | `	pRes = (phl_domnode *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_domnode));` |
+|   ! 0 | 2513 | `	if( pRes == 0 ){` |
+|   ! 0 | 2514 | `		return;` |
+|     - | 2515 | `	}` |
+|   ! 0 | 2516 | `	pRes->pShell = pShell;` |
+|     - | 2517 | `	/* Only the ROOT survives a document copy identifiably; php's clone of a` |
+|     - | 2518 | `	 * deeper object stands on the copy's root too. */` |
+|   ! 0 | 2519 | `	pRes->pNode = xmlDocGetRootElement(pNew);` |
+|   ! 0 | 2520 | `	PH7_MemObjInit(pVm,&sVal);` |
+|   ! 0 | 2521 | `	sVal.x.pOther = pRes;` |
+|   ! 0 | 2522 | `	sVal.iFlags = MEMOBJ_RES;` |
+|   ! 0 | 2523 | `	PH7_NativeSetProp(pVm,pCopy,SXE_RES,sizeof(SXE_RES)-1,&sVal);` |
+|   ! 0 | 2524 | `}` |
+|     - | 2525 | `/*` |
+|     - | 2526 | ` * php's compare handler for the class -- and it is NODE IDENTITY, not the` |
+|     - | 2527 | ` * property table the rest of its surface shows.` |
+|     - | 2528 | ` *` |
+|     - | 2529 | `` * So `$x->kid == $x->kid` is true (both stand on the same element and ask the`` |
+|     - | 2530 | ` * same question of it) while two documents parsed from the SAME BYTES are never` |
+|     - | 2531 | ` * equal, and neither are two objects over different nodes however alike their` |
+|     - | 2532 | ` * tables. An object with no node equals another with no node and nothing else.` |
+|     - | 2533 | ` */` |
+|    12 | 2534 | `static void SxeCmp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)` |
+|     1 | 2535 | `{` |
+|     - | 2536 | `	ph7_class_instance *pOther;` |
+|     - | 2537 | `	xmlNodePtr pA,pB;` |
+|     6 | 2538 | `	(void)pVm;` |
+|    13 | 2539 | `	pOther = pCtx->pOther;` |
+|    13 | 2540 | `	if( pOther == 0 \|\| PH7_NativeAttr(pOther,SXE_RES) == 0 ){` |
+|     7 | 2541 | `		return;` |
+|     - | 2542 | `	}` |
+|     7 | 2543 | `	pA = SxeNodeOf(pThis);` |
+|     7 | 2544 | `	pB = SxeNodeOf(pOther);` |
+|     7 | 2545 | `	pCtx->bAnswered = 1;` |
+|     7 | 2546 | `	pCtx->iResult = (pA == 0 && pB == 0) ? 0 : (pA == pB ? 0 : 1);` |
+|     7 | 2547 | `}` |
+|  8445 | 2548 | `PH7_PRIVATE sxi32 PH7_VmInstallSimpleXml(ph7_vm *pVm)` |
+|     5 | 2549 | `{` |
+|     - | 2550 | `	static const struct {` |
+|     - | 2551 | `		const char *zName;` |
+|     - | 2552 | `		ProchHostFunction xFunc;` |
+|     - | 2553 | `	} aFunc[] = {` |
+|     - | 2554 | `		{ "simplexml_load_file",   vm_builtin_simplexml_load_file   },` |
+|     - | 2555 | `		{ "simplexml_load_string", vm_builtin_simplexml_load_string },` |
+|     - | 2556 | `		{ "simplexml_import_dom",  vm_builtin_simplexml_import_dom  },` |
+|     - | 2557 | `		/* ext/dom's own names for the other direction: one per class tree. */` |
+|     - | 2558 | `		{ "dom_import_simplexml",  vm_builtin_dom_import_simplexml  },` |
+|     - | 2559 | `		{ "Dom\\import_simplexml", vm_builtin_Dom_import_simplexml  },` |
+|     - | 2560 | `	};` |
+|     - | 2561 | `	/*` |
+|     - | 2562 | `	 * The engine slots. php's SimpleXMLElement declares NO property -- Reflection` |
+|     - | 2563 | ``	 * lists none and `property_exists()` is false for every name -- so each of`` |
+|     - | 2564 | `	 * these is PH7_MOD_HIDDEN and the whole object shows the document instead.` |
+|     - | 2565 | `	 */` |
+|     - | 2566 | `	static const PH7_NativePropDef aProp[] = {` |
+|     - | 2567 | `		{ SXE_RES,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 2568 | `		{ SXE_IT,   PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, 0 },` |
+|     - | 2569 | `		{ SXE_NM,   PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 2570 | `		{ SXE_NS,   PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 2571 | `		{ SXE_ISP,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, 0 },` |
+|     - | 2572 | `		{ SXE_CUR,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 2573 | `		{ SXE_XPNS, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 2574 | `	};` |
+|     - | 2575 | `	/*` |
+|     - | 2576 | `	 * php's own list, in php's own order -- which is what Reflection reports and` |
+|     - | 2577 | ``	 * what `get_class_methods()` answers. Every return type is TENTATIVE (`@`):`` |
+|     - | 2578 | `	 * php's stubs mark the whole class that way, so a subclass may still declare` |
+|     - | 2579 | ``	 * `children()` returning something else without a fatal.`` |
+|     - | 2580 | `	 */` |
+|     - | 2581 | `	static const PH7_NativeMethodDef aMethod[] = {` |
+|     - | 2582 | `		{ "xpath", PH7_MOD_PUBLIC, "string $expression", "@array\|false\|null",` |
+|     - | 2583 | `		  vm_builtin_SimpleXMLElement_xpath },` |
+|     - | 2584 | `		{ "registerXPathNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace",` |
+|     - | 2585 | `		  "@bool", vm_builtin_SimpleXMLElement_registerXPathNamespace },` |
+|     - | 2586 | `		{ "asXML", PH7_MOD_PUBLIC, "?string $filename = null", "@string\|bool",` |
+|     - | 2587 | `		  vm_builtin_SimpleXMLElement_asXML },` |
+|     - | 2588 | `		{ "saveXML", PH7_MOD_PUBLIC, "?string $filename = null", "@string\|bool",` |
+|     - | 2589 | `		  vm_builtin_SimpleXMLElement_asXML },` |
+|     - | 2590 | `		{ "getNamespaces", PH7_MOD_PUBLIC, "bool $recursive = false", "@array",` |
+|     - | 2591 | `		  vm_builtin_SimpleXMLElement_getNamespaces },` |
+|     - | 2592 | `		{ "getDocNamespaces", PH7_MOD_PUBLIC, "bool $recursive = false, bool $fromRoot = true",` |
+|     - | 2593 | `		  "@array\|false", vm_builtin_SimpleXMLElement_getDocNamespaces },` |
+|     - | 2594 | `		{ "children", PH7_MOD_PUBLIC, "?string $namespaceOrPrefix = null, bool $isPrefix = false",` |
+|     - | 2595 | `		  "@?SimpleXMLElement", vm_builtin_SimpleXMLElement_children },` |
+|     - | 2596 | `		{ "attributes", PH7_MOD_PUBLIC, "?string $namespaceOrPrefix = null, bool $isPrefix = false",` |
+|     - | 2597 | `		  "@?SimpleXMLElement", vm_builtin_SimpleXMLElement_attributes },` |
+|     - | 2598 | `		{ "__construct", PH7_MOD_PUBLIC,` |
+|     - | 2599 | `		  "string $data, int $options = 0, bool $dataIsURL = false, "` |
+|     - | 2600 | `		  "string $namespaceOrPrefix = '', bool $isPrefix = false", "",` |
+|     - | 2601 | `		  vm_builtin_SimpleXMLElement_construct },` |
+|     - | 2602 | `		{ "addChild", PH7_MOD_PUBLIC,` |
+|     - | 2603 | `		  "string $qualifiedName, ?string $value = null, ?string $namespace = null",` |
+|     - | 2604 | `		  "@?SimpleXMLElement", vm_builtin_SimpleXMLElement_addChild },` |
+|     - | 2605 | `		{ "addAttribute", PH7_MOD_PUBLIC,` |
+|     - | 2606 | `		  "string $qualifiedName, string $value, ?string $namespace = null", "@void",` |
+|     - | 2607 | `		  vm_builtin_SimpleXMLElement_addAttribute },` |
+|     - | 2608 | `		{ "getName", PH7_MOD_PUBLIC, "", "@string", vm_builtin_SimpleXMLElement_getName },` |
+|     - | 2609 | `		{ "__toString", PH7_MOD_PUBLIC, "", "string", vm_builtin_SimpleXMLElement_toString },` |
+|     - | 2610 | `		{ "__debugInfo", PH7_MOD_PUBLIC, "", "?array", vm_builtin_SimpleXMLElement_debugInfo },` |
+|     - | 2611 | `		{ "count", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SimpleXMLElement_count },` |
+|     - | 2612 | `		{ "rewind", PH7_MOD_PUBLIC, "", "@void", vm_builtin_SimpleXMLElement_rewind },` |
+|     - | 2613 | `		{ "valid", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SimpleXMLElement_valid },` |
+|     - | 2614 | `		{ "current", PH7_MOD_PUBLIC, "", "@SimpleXMLElement",` |
+|     - | 2615 | `		  vm_builtin_SimpleXMLElement_current },` |
+|     - | 2616 | `		{ "key", PH7_MOD_PUBLIC, "", "@string", vm_builtin_SimpleXMLElement_key },` |
+|     - | 2617 | `		{ "next", PH7_MOD_PUBLIC, "", "@void", vm_builtin_SimpleXMLElement_next },` |
+|     - | 2618 | `		{ "hasChildren", PH7_MOD_PUBLIC, "", "@bool",` |
+|     - | 2619 | `		  vm_builtin_SimpleXMLElement_hasChildren },` |
+|     - | 2620 | `		{ "getChildren", PH7_MOD_PUBLIC, "", "@?SimpleXMLElement",` |
+|     - | 2621 | `		  vm_builtin_SimpleXMLElement_getChildren },` |
+|     - | 2622 | `	};` |
+|     - | 2623 | `	/*` |
+|     - | 2624 | `	 * php's class list. SimpleXMLElement declares Stringable, Countable and` |
+|     - | 2625 | ``	 * RecursiveIterator -- and NOT ArrayAccess, which is why `$x['a']` is a`` |
+|     - | 2626 | ``	 * dimension handler and `$x instanceof ArrayAccess` is false; and not`` |
+|     - | 2627 | `	 * JsonSerializable, because json_encode() reads its property table like any` |
+|     - | 2628 | `	 * other object's.` |
+|     - | 2629 | `	 *` |
+|     - | 2630 | `	 * PH7_CLASS_NUM_AS_STRING is php's cast_object answering IS_LONG/IS_DOUBLE` |
+|     - | 2631 | `	 * from the node's text, and PH7_CLASS_VARS_PRESENT is its get_properties` |
+|     - | 2632 | `	 * answering the get_object_vars purpose too -- the two places SimpleXML does` |
+|     - | 2633 | `	 * not behave like every other native class here.` |
+|     - | 2634 | `	 *` |
+|     - | 2635 | `	 * SimpleXMLIterator adds nothing: php declares it as an empty subclass, kept` |
+|     - | 2636 | `	 * because RecursiveIteratorIterator over one is how the class is used.` |
+|     - | 2637 | `	 */` |
+|     - | 2638 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|     - | 2639 | `		{ "SimpleXMLElement", 0, "Stringable,Countable,RecursiveIterator",` |
+|     - | 2640 | `		  PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NUM_AS_STRING\|PH7_CLASS_VARS_PRESENT,` |
+|     - | 2641 | `		  aMethod, SX_ARRAYSIZE(aMethod), 0, 0, aProp, SX_ARRAYSIZE(aProp),` |
+|     - | 2642 | `		  0, 0, SxePresent },` |
+|     - | 2643 | `		{ "SimpleXMLIterator", "SimpleXMLElement", 0,` |
+|     - | 2644 | `		  PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NUM_AS_STRING\|PH7_CLASS_VARS_PRESENT,` |
+|     - | 2645 | `		  0, 0, 0, 0, 0, 0, 0, 0, SxePresent },` |
+|     - | 2646 | `	};` |
+|     - | 2647 | `	sxi32 rc;` |
+|     - | 2648 | `	sxu32 n;` |
+| 50675 | 2649 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
+| 42230 | 2650 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 21090 | 2651 | `	}` |
+|  8450 | 2652 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  8450 | 2653 | `	if( rc == SXRET_OK ){` |
+|     - | 2654 | `		/* The four handlers php gives the class, assigned on the mounted class` |
+|     - | 2655 | `		 * because PH7_NativeClassSpec carries no field for any of them. Stated on` |
+|     - | 2656 | `		 * the ROOT only: the engine walks the base chain, which is php's own` |
+|     - | 2657 | `		 * handler inheritance, so SimpleXMLIterator and a userland subclass reach` |
+|     - | 2658 | `		 * these. */` |
+|  8450 | 2659 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"SimpleXMLElement",` |
+|     - | 2660 | `			sizeof("SimpleXMLElement")-1,FALSE,0);` |
+|  8450 | 2661 | `		if( pClass ){` |
+|  8450 | 2662 | `			pClass->xDim = SxeDimHook;` |
+|  8450 | 2663 | `			pClass->xClone = SxeClone;` |
+|  8450 | 2664 | `			pClass->xBool = SxeBool;` |
+|  8450 | 2665 | `			pClass->xCmp = SxeCmp;` |
+|  4217 | 2666 | `		}` |
+|  8450 | 2667 | `		PH7_NativeClassInstallPropHook(&(*pVm),"SimpleXMLElement",SxePropHook);` |
+|  4217 | 2668 | `	}` |
+|  8450 | 2669 | `	return rc;` |
+|     5 | 2670 | `}` |
+|     - | 2671 |  |
+|     - | 2672 | `#else` |
+|     - | 2673 | `/* Ensure non-empty translation unit when libxml is disabled (MSVC C4206) */` |
+|     - | 2674 | `typedef int vm_simplexml_unused;` |
+|     - | 2675 | `#endif /* PH7_ENABLE_LIBXML */` |
+|     - | 2676 |  |

@@ -81,9 +81,9 @@ Coverage: 950/1025 lines (92.68%)
 |     - |   71 | ` * Centralising this here gives microtime()/gettimeofday() a single sub-second` |
 |     - |   72 | `` * source instead of the old nonsensical `tt % SX_USEC_PER_SEC` off-Unix path.`` |
 |     - |   73 | ` */` |
-|  5648 |   74 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
+|  5656 |   74 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
 |     5 |   75 | `{` |
-|  5653 |   76 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
+|  5661 |   76 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
 |   ! 0 |   77 | `		ph7_int64 sec = 0,usec = 0;` |
 |   ! 0 |   78 | `		if( pVm->pEngine->xConf.xClock(pVm->pEngine->xConf.pClockData,&sec,&usec) == PH7_OK ){` |
 |   ! 0 |   79 | `			pOut->tm_sec  = (long)sec;` |
@@ -94,9 +94,9 @@ Coverage: 950/1025 lines (92.68%)
 |     - |   84 | `#if defined(__UNIXES__)` |
 |     - |   85 | `	{` |
 |     - |   86 | `		struct timeval tv;` |
-|  5648 |   87 | `		gettimeofday(&tv,0);` |
-|  5648 |   88 | `		pOut->tm_sec  = (long)tv.tv_sec;` |
-|  5648 |   89 | `		pOut->tm_usec = (long)tv.tv_usec;` |
+|  5656 |   87 | `		gettimeofday(&tv,0);` |
+|  5656 |   88 | `		pOut->tm_sec  = (long)tv.tv_sec;` |
+|  5656 |   89 | `		pOut->tm_usec = (long)tv.tv_usec;` |
 |     - |   90 | `	}` |
 |     - |   91 | `#elif defined(__WINNT__)` |
 |     - |   92 | `	{` |
@@ -142,7 +142,7 @@ Coverage: 950/1025 lines (92.68%)
 |     - |  132 | `		pOut->tm_usec = 0; /* no sub-second source; embedders supply one via PH7_CONFIG_CLOCK */` |
 |     - |  133 | `	}` |
 |     - |  134 | `#endif /* __UNIXES__ */` |
-|  2829 |  135 | `}` |
+|  2833 |  135 | `}` |
 |     - |  136 | `/*` |
 |     - |  137 | ` * ...and the same clock for a caller outside this file. php reads it in exactly` |
 |     - |  138 | ` * two places that matter to a script: the date surface, and uniqid(), whose` |
@@ -174,17 +174,17 @@ Coverage: 950/1025 lines (92.68%)
 |     - |  164 | ` * such diff answered 0.0. Routing them through DateNow() also hands the date` |
 |     - |  165 | ` * classes the PH7_CONFIG_CLOCK hook the procedural half already had.` |
 |     - |  166 | ` */` |
-|  4320 |  167 | `PH7_PRIVATE void DtNowUs(ph7_vm *pVm,sxi64 *piSec,int *puSec)` |
+|  4328 |  167 | `PH7_PRIVATE void DtNowUs(ph7_vm *pVm,sxi64 *piSec,int *puSec)` |
 |     4 |  168 | `{` |
 |     - |  169 | `	sytime sNow;` |
-|  4324 |  170 | `	DateNow(pVm,&sNow);` |
-|  4324 |  171 | `	if( piSec ){` |
-|  4324 |  172 | `		*piSec = (sxi64)sNow.tm_sec;` |
-|  2160 |  173 | `	}` |
-|  4324 |  174 | `	if( puSec ){` |
-|  4202 |  175 | `		*puSec = (int)sNow.tm_usec;` |
-|  2099 |  176 | `	}` |
-|  4324 |  177 | `}` |
+|  4332 |  170 | `	DateNow(pVm,&sNow);` |
+|  4332 |  171 | `	if( piSec ){` |
+|  4332 |  172 | `		*piSec = (sxi64)sNow.tm_sec;` |
+|  2164 |  173 | `	}` |
+|  4332 |  174 | `	if( puSec ){` |
+|  4210 |  175 | `		*puSec = (int)sNow.tm_usec;` |
+|  2103 |  176 | `	}` |
+|  4332 |  177 | `}` |
 |     - |  178 | `/*` |
 |     - |  179 | ` * Break a Unix timestamp (or the current time) down into a Sytm the way the` |
 |     - |  180 | ` * DateTime layer does: PHL's own civil arithmetic, not the platform's gmtime().` |
@@ -226,17 +226,17 @@ Coverage: 950/1025 lines (92.68%)
 |     - |  216 | ` * the caller owns the message and the newline.` |
 |     - |  217 | ` */` |
 |     6 |  218 | `PH7_PRIVATE void PH7_VmLogTimestamp(ph7_vm *pVm,SyBlob *pOut)` |
-|     1 |  219 | `{` |
+|     2 |  219 | `{` |
 |     - |  220 | `	const char *zMon;` |
 |     - |  221 | `	Sytm sTm;` |
 |     - |  222 | `	time_t t;` |
-|     7 |  223 | `	time(&t);` |
-|     7 |  224 | `	DtSytmOfTimestamp(pVm,(sxi64)t,&sTm);` |
-|     7 |  225 | `	zMon = SyTimeGetMonth(sTm.tm_mon);` |
-|    10 |  226 | `	SyBlobFormat(pOut,"[%02d-%.3s-%04d %02d:%02d:%02d %.*s] ",` |
+|     8 |  223 | `	time(&t);` |
+|     8 |  224 | `	DtSytmOfTimestamp(pVm,(sxi64)t,&sTm);` |
+|     8 |  225 | `	zMon = SyTimeGetMonth(sTm.tm_mon);` |
+|    11 |  226 | `	SyBlobFormat(pOut,"[%02d-%.3s-%04d %02d:%02d:%02d %.*s] ",` |
 |     3 |  227 | `		sTm.tm_mday,zMon,sTm.tm_year,sTm.tm_hour,sTm.tm_min,sTm.tm_sec,` |
 |     6 |  228 | `		(int)pVm->nDefTz,pVm->zDefTz);` |
-|     7 |  229 | `}` |
+|     8 |  229 | `}` |
 |     - |  230 | `/*` |
 |     - |  231 | ` * The same breakdown for the gm* doors, which are UTC whatever the script's` |
 |     - |  232 | ` * default zone is -- and whose zone FIELDS are not the default's either. php` |
@@ -262,16 +262,16 @@ Coverage: 950/1025 lines (92.68%)
 |     - |  252 | `  *  since the Unix Epoch (January 1 1970 00:00:00 GMT).` |
 |     - |  253 | `  */` |
 |    20 |  254 | `PH7_PRIVATE int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     4 |  255 | `{` |
+|     3 |  255 | `{` |
 |     - |  256 | `	time_t tt;` |
 |    10 |  257 | `	SXUNUSED(nArg); /* cc warning */` |
 |    10 |  258 | `	SXUNUSED(apArg);` |
 |     - |  259 | `	/* Extract the current time */` |
-|    24 |  260 | `	time(&tt);` |
+|    23 |  260 | `	time(&tt);` |
 |     - |  261 | `	/* Return as 64-bit integer */` |
-|    24 |  262 | `	ph7_result_int64(pCtx,(ph7_int64)tt);` |
-|    24 |  263 | `	return  PH7_OK;` |
-|     4 |  264 | `}` |
+|    23 |  262 | `	ph7_result_int64(pCtx,(ph7_int64)tt);` |
+|    23 |  263 | `	return  PH7_OK;` |
+|     3 |  264 | `}` |
 |     - |  265 | `/*` |
 |     - |  266 | `  * string/float microtime([ bool $get_as_float = false ])` |
 |     - |  267 | `  *  microtime() returns the current Unix timestamp with microseconds.` |
@@ -644,21 +644,21 @@ Coverage: 950/1025 lines (92.68%)
 |     - |  634 | ` *            east of UTC is always positive.` |
 |     - |  635 | ` * c         ISO 8601 date` |
 |     - |  636 | ` */` |
-|  4580 |  637 | `PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm,int uSec)` |
+|  4588 |  637 | `PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm,int uSec)` |
 |     4 |  638 | `{` |
-|  4584 |  639 | `	const char *zEnd = &zIn[nLen];` |
+|  4592 |  639 | `	const char *zEnd = &zIn[nLen];` |
 |     - |  640 | `	const char *zCur;` |
 |     - |  641 | `	/* Start the format process */` |
-| 20381 |  642 | `	for(;;){` |
-| 40766 |  643 | `		if( zIn >= zEnd ){` |
+| 20399 |  642 | `	for(;;){` |
+| 40802 |  643 | `		if( zIn >= zEnd ){` |
 |     - |  644 | `			/* No more input to process */` |
-|  4584 |  645 | `			break;` |
+|  4592 |  645 | `			break;` |
 |     - |  646 | `		}` |
-| 36186 |  647 | `		switch(zIn[0]){` |
-|  1410 |  648 | `		case 'd':` |
+| 36214 |  647 | `		switch(zIn[0]){` |
+|  1412 |  648 | `		case 'd':` |
 |     - |  649 | `			/* Day of the month, 2 digits with leading zeros */` |
-|  2824 |  650 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mday);` |
-|  2824 |  651 | `			break;` |
+|  2828 |  650 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mday);` |
+|  2828 |  651 | `			break;` |
 |    84 |  652 | `		case 'D':` |
 |     - |  653 | `			/*A textual representation of a day, three letters*/` |
 |   169 |  654 | `			zCur = SyTimeGetDay(pTm->tm_wday);` |
@@ -691,10 +691,10 @@ Coverage: 950/1025 lines (92.68%)
 |     7 |  681 | `			zCur = SyTimeGetMonth(pTm->tm_mon);` |
 |     7 |  682 | `			ph7_result_string(pCtx,zCur,-1/*Compute length automatically*/);` |
 |     7 |  683 | `			break;` |
-|  1410 |  684 | `		case 'm':` |
+|  1412 |  684 | `		case 'm':` |
 |     - |  685 | `			/*Numeric representation of a month, with leading zeros*/` |
-|  2824 |  686 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mon + 1);` |
-|  2824 |  687 | `			break;` |
+|  2828 |  686 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mon + 1);` |
+|  2828 |  687 | `			break;` |
 |     1 |  688 | `		case 'M':` |
 |     - |  689 | `			/*A short textual representation of a month, three letters*/` |
 |     3 |  690 | `			zCur = SyTimeGetMonth(pTm->tm_mon);` |
@@ -738,13 +738,13 @@ Coverage: 950/1025 lines (92.68%)
 |     - |  728 | `			}` |
 |    55 |  729 | `			break;` |
 |     - |  730 | `				 }` |
-|  1321 |  731 | `		case 'Y':` |
+|  1324 |  731 | `		case 'Y':` |
 |     - |  732 | `			/* A full numeric representation of a year, at least 4 digits. php pads` |
 |     - |  733 | `			 * the ABSOLUTE value behind the sign (-495 prints "-0495"); a plain` |
 |     - |  734 | `			 * "%04qd" spends one of the four columns on the '-' and printed "-495". */` |
-|  5254 |  735 | `			ph7_result_string_format(pCtx,"%s%04qd",` |
-|  3929 |  736 | `				pTm->tm_year < 0 ? "-" : "",DT_ABSYEAR(pTm->tm_year));` |
-|  2646 |  737 | `			break;` |
+|  5266 |  735 | `			ph7_result_string_format(pCtx,"%s%04qd",` |
+|  3938 |  736 | `				pTm->tm_year < 0 ? "-" : "",DT_ABSYEAR(pTm->tm_year));` |
+|  2652 |  737 | `			break;` |
 |    22 |  738 | `		case 'X':` |
 |     - |  739 | `			/* Expanded full year, always signed (php 8.2+): +2024 */` |
 |    80 |  740 | `			ph7_result_string_format(pCtx,"%c%04qd",` |
@@ -798,14 +798,14 @@ Coverage: 950/1025 lines (92.68%)
 |    10 |  788 | `			ph7_result_string_format(pCtx,"%02d",` |
 |     6 |  789 | `				(pTm->tm_hour % 12) == 0 ? 12 : pTm->tm_hour % 12);` |
 |     7 |  790 | `			break;` |
-|  1287 |  791 | `		case 'H':` |
+|  1288 |  791 | `		case 'H':` |
 |     - |  792 | `			/*	24-hour format of an hour with leading zeros */` |
-|  2577 |  793 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_hour);` |
-|  2577 |  794 | `			break;` |
-|  1287 |  795 | `		case 'i':` |
+|  2579 |  793 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_hour);` |
+|  2579 |  794 | `			break;` |
+|  1288 |  795 | `		case 'i':` |
 |     - |  796 | `			/* 	Minutes with leading zeros */` |
-|  2577 |  797 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_min);` |
-|  2577 |  798 | `			break;` |
+|  2579 |  797 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_min);` |
+|  2579 |  798 | `			break;` |
 |  1253 |  799 | `		case 's':` |
 |     - |  800 | `			/* 	second with leading zeros */` |
 |  2509 |  801 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_sec);` |
@@ -900,11 +900,11 @@ Coverage: 950/1025 lines (92.68%)
 |     - |  890 | `			/* Seconds since the Unix Epoch FOR THIS Sytm (php: the timestamp` |
 |     - |  891 | `			 * being formatted — pre-fix this printed time(0) regardless of the` |
 |     - |  892 | `			 * date under format). */` |
-|    71 |  893 | `			ph7_result_string_format(pCtx,"%qd",(sxi64)(` |
+|    72 |  893 | `			ph7_result_string_format(pCtx,"%qd",(sxi64)(` |
 |    46 |  894 | `				(sxu64)DtDaysFromCivil(pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday) * 86400u` |
 |    69 |  895 | `				+ (sxu64)((sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60` |
 |    46 |  896 | `				          + (sxi64)pTm->tm_sec - (sxi64)pTm->tm_gmtoff)));` |
-|    48 |  897 | `			break;` |
+|    49 |  897 | `			break;` |
 |    48 |  898 | `		case 'O':{` |
 |     - |  899 | `			/* Difference to GMT without colon: +0530 (php) */` |
 |    97 |  900 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
@@ -964,15 +964,15 @@ Coverage: 950/1025 lines (92.68%)
 |     9 |  954 | `				ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
 |     4 |  955 | `			}` |
 |     9 |  956 | `			break;` |
-|  7899 |  957 | `		default:` |
+|  7904 |  957 | `		default:` |
 |     - |  958 | `			/* Unknown format specifer,expand verbatim */` |
-| 15802 |  959 | `			ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
-| 15798 |  960 | `			break;` |
+| 15812 |  959 | `			ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
+| 15808 |  960 | `			break;` |
 |     - |  961 | `		}` |
 |     - |  962 | `		/* Point to the next character */` |
-| 36186 |  963 | `		zIn++;` |
+| 36214 |  963 | `		zIn++;` |
 |     4 |  964 | `	}` |
-|  4584 |  965 | `	return SXRET_OK;` |
+|  4592 |  965 | `	return SXRET_OK;` |
 |     4 |  966 | `}` |
 |     - |  967 | `/*` |
 |     - |  968 | ` * Resolve a date()/gmdate() $timestamp argument under php 8's ?int weak ZPP:` |
@@ -1603,15 +1603,15 @@ Coverage: 950/1025 lines (92.68%)
 |     - | 1593 | ` *  other id is then rejected with php's invalid-id notice.` |
 |     - | 1594 | ` */` |
 |   214 | 1595 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     4 | 1596 | `{` |
-|   218 | 1597 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     5 | 1596 | `{` |
+|   219 | 1597 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - | 1598 | `	const char *zId;` |
 |     - | 1599 | `	int nId;` |
-|   218 | 1600 | `	if( nArg < 1 ){` |
+|   219 | 1600 | `	if( nArg < 1 ){` |
 |   ! 0 | 1601 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 | 1602 | `		return PH7_OK;` |
 |     - | 1603 | `	}` |
-|   218 | 1604 | `	zId = ph7_value_to_string(apArg[0],&nId);` |
+|   219 | 1604 | `	zId = ph7_value_to_string(apArg[0],&nId);` |
 |     - | 1605 | `#ifdef PH7_ENABLE_TZDB` |
 |     - | 1606 | `	/* An IDENTIFIER and nothing else. This door does not share the zone grammar` |
 |     - | 1607 | `	 * DateTimeZone's constructor has: it skips no leading blank, reads no` |
@@ -1624,13 +1624,13 @@ Coverage: 950/1025 lines (92.68%)
 |     - | 1614 | `	 * The lookup folds case and the STORED name is the caller's own bytes, the` |
 |     - | 1615 | `	 * same rule an identifier has everywhere else -- get() echoes back` |
 |     - | 1616 | ``	 * `europe/paris`. */`` |
-|   218 | 1617 | `	if( nId > 0 && (sxu32)nId < sizeof(pVm->zDefTz) && PH7_TzFind(zId,nId) >= 0 ){` |
-|   202 | 1618 | `		SyMemcpy(zId,pVm->zDefTz,(sxu32)nId);` |
-|   202 | 1619 | `		pVm->zDefTz[nId] = 0;` |
-|   202 | 1620 | `		pVm->nDefTz = (sxu32)nId;` |
-|   202 | 1621 | `		pVm->bDefTzExplicit = 1;` |
-|   202 | 1622 | `		ph7_result_bool(pCtx,1);` |
-|   202 | 1623 | `		return PH7_OK;` |
+|   219 | 1617 | `	if( nId > 0 && (sxu32)nId < sizeof(pVm->zDefTz) && PH7_TzFind(zId,nId) >= 0 ){` |
+|   203 | 1618 | `		SyMemcpy(zId,pVm->zDefTz,(sxu32)nId);` |
+|   203 | 1619 | `		pVm->zDefTz[nId] = 0;` |
+|   203 | 1620 | `		pVm->nDefTz = (sxu32)nId;` |
+|   203 | 1621 | `		pVm->bDefTzExplicit = 1;` |
+|   203 | 1622 | `		ph7_result_bool(pCtx,1);` |
+|   203 | 1623 | `		return PH7_OK;` |
 |     - | 1624 | `	}` |
 |     - | 1625 | `#endif` |
 |    18 | 1626 | `	if( nId == 3 && (SyStrnicmp(zId,"UTC",3) == 0 \|\| SyStrnicmp(zId,"GMT",3) == 0) ){` |
@@ -1646,7 +1646,7 @@ Coverage: 950/1025 lines (92.68%)
 |    18 | 1636 | `	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"Timezone ID '%.*s' is invalid",nId,zId);` |
 |    18 | 1637 | `	ph7_result_bool(pCtx,0);` |
 |    18 | 1638 | `	return PH7_OK;` |
-|   111 | 1639 | `}` |
+|   112 | 1639 | `}` |
 |     - | 1640 |  |
 |     - | 1641 | `/*` |
 |     - | 1642 | ` * The sun trio -- date_sun_info(), date_sunrise() and date_sunset().` |
@@ -1909,21 +1909,21 @@ Coverage: 950/1025 lines (92.68%)
 |     - | 1899 | ` * because the ini layer has no float door.` |
 |     - | 1900 | ` */` |
 |    46 | 1901 | `static double DtSunIniFloat(ph7_vm *pVm,const char *zName,double rDefault)` |
-|     2 | 1902 | `{` |
+|     1 | 1902 | `{` |
 |     - | 1903 | `	const char *zVal;` |
 |     - | 1904 | `	SyBlob sVal;` |
-|    48 | 1905 | `	double r = rDefault;` |
+|    47 | 1905 | `	double r = rDefault;` |
 |     - | 1906 | `	int nVal;` |
-|    48 | 1907 | `	SyBlobInit(&sVal,&pVm->sAllocator);` |
-|    48 | 1908 | `	PH7_VmIniGetStr(pVm,zName,&sVal);` |
-|    48 | 1909 | `	nVal = (int)SyBlobLength(&sVal);` |
-|    48 | 1910 | `	zVal = (const char *)SyBlobData(&sVal);` |
-|    48 | 1911 | `	if( nVal > 0 ){` |
-|    48 | 1912 | `		SyStrToReal(zVal,(sxu32)nVal,(void *)&r,0);` |
+|    47 | 1907 | `	SyBlobInit(&sVal,&pVm->sAllocator);` |
+|    47 | 1908 | `	PH7_VmIniGetStr(pVm,zName,&sVal);` |
+|    47 | 1909 | `	nVal = (int)SyBlobLength(&sVal);` |
+|    47 | 1910 | `	zVal = (const char *)SyBlobData(&sVal);` |
+|    47 | 1911 | `	if( nVal > 0 ){` |
+|    47 | 1912 | `		SyStrToReal(zVal,(sxu32)nVal,(void *)&r,0);` |
 |    23 | 1913 | `	}` |
-|    48 | 1914 | `	SyBlobRelease(&sVal);` |
-|    48 | 1915 | `	return r;` |
-|     2 | 1916 | `}` |
+|    47 | 1914 | `	SyBlobRelease(&sVal);` |
+|    47 | 1915 | `	return r;` |
+|     1 | 1916 | `}` |
 |     - | 1917 | `/*` |
 |     - | 1918 | ` * The body behind date_sunrise() and date_sunset(), which differ only in which` |
 |     - | 1919 | ` * end of the arc they return and which zenith directive they default from.` |
@@ -1937,50 +1937,50 @@ Coverage: 950/1025 lines (92.68%)
 |     - | 1927 | ` */` |
 |   126 | 1928 | `static int DtSunRiseSetDoor(ph7_context *pCtx,int nArg,ph7_value **apArg,` |
 |     - | 1929 | `	int bSunset)` |
-|     2 | 1930 | `{` |
+|     1 | 1930 | `{` |
 |     - | 1931 | `	double rLat,rLon,rZenith,rUtcOff,rRise,rSet,rTransit,rHours;` |
-|   128 | 1932 | `	const char *zZenithIni = bSunset ? "date.sunset_zenith" : "date.sunrise_zenith";` |
-|   128 | 1933 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   127 | 1932 | `	const char *zZenithIni = bSunset ? "date.sunset_zenith" : "date.sunrise_zenith";` |
+|   127 | 1933 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - | 1934 | `	sxi64 iTs,iBase;` |
-|   128 | 1935 | `	sxi32 iZoneOff = 0;` |
-|   128 | 1936 | `	int iFormat = 1 /* SUNFUNCS_RET_STRING */;` |
+|   127 | 1935 | `	sxi32 iZoneOff = 0;` |
+|   127 | 1936 | `	int iFormat = 1 /* SUNFUNCS_RET_STRING */;` |
 |     - | 1937 | `	int bUtcOff,rc;` |
-|   128 | 1938 | `	if( nArg < 1 ){` |
+|   127 | 1938 | `	if( nArg < 1 ){` |
 |   ! 0 | 1939 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 | 1940 | `		return PH7_OK;` |
 |     - | 1941 | `	}` |
-|   128 | 1942 | `	iTs = ph7_value_to_int64(apArg[0]);` |
-|   128 | 1943 | `	if( nArg > 1 ){` |
-|   128 | 1944 | `		iFormat = ph7_value_to_int(apArg[1]);` |
+|   127 | 1942 | `	iTs = ph7_value_to_int64(apArg[0]);` |
+|   127 | 1943 | `	if( nArg > 1 ){` |
+|   127 | 1944 | `		iFormat = ph7_value_to_int(apArg[1]);` |
 |    63 | 1945 | `	}` |
-|   128 | 1946 | `	if( iFormat < 0 \|\| iFormat > 2 ){` |
+|   127 | 1946 | `	if( iFormat < 0 \|\| iFormat > 2 ){` |
 |    19 | 1947 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |     - | 1948 | `			"%s(): Argument #2 ($returnFormat) must be one of "` |
 |     - | 1949 | `			"SUNFUNCS_RET_TIMESTAMP, SUNFUNCS_RET_STRING, or SUNFUNCS_RET_DOUBLE",` |
 |     6 | 1950 | `			bSunset ? "date_sunset" : "date_sunrise");` |
 |     - | 1951 | `	}` |
-|   115 | 1952 | `	rLat = (nArg > 2 && !ph7_value_is_null(apArg[2]))` |
+|   114 | 1952 | `	rLat = (nArg > 2 && !ph7_value_is_null(apArg[2]))` |
 |   112 | 1953 | `		? ph7_value_to_double(apArg[2])` |
 |    58 | 1954 | `		: DtSunIniFloat(pVm,"date.default_latitude",31.7667);` |
-|   115 | 1955 | `	rLon = (nArg > 3 && !ph7_value_is_null(apArg[3]))` |
+|   114 | 1955 | `	rLon = (nArg > 3 && !ph7_value_is_null(apArg[3]))` |
 |   112 | 1956 | `		? ph7_value_to_double(apArg[3])` |
 |    58 | 1957 | `		: DtSunIniFloat(pVm,"date.default_longitude",35.2333);` |
-|    95 | 1958 | `	rZenith = (nArg > 4 && !ph7_value_is_null(apArg[4]))` |
+|    94 | 1958 | `	rZenith = (nArg > 4 && !ph7_value_is_null(apArg[4]))` |
 |    72 | 1959 | `		? ph7_value_to_double(apArg[4])` |
 |    78 | 1960 | `		: DtSunIniFloat(pVm,zZenithIni,90.833333);` |
 |     - | 1961 | `	/* $utcOffset defaults to the SCRIPT ZONE's offset, not to zero: left null,` |
 |     - | 1962 | `	 * the clock face these two answer on is the local one. Defaulting it to` |
 |     - | 1963 | `	 * zero instead put every Los Angeles answer eight hours out while UTC --` |
 |     - | 1964 | `	 * where the two agree -- read perfectly green. */` |
-|   116 | 1965 | `	bUtcOff = (nArg > 5 && !ph7_value_is_null(apArg[5]));` |
-|   116 | 1966 | `	rUtcOff = bUtcOff ? ph7_value_to_double(apArg[5]) : 0.0;` |
+|   115 | 1965 | `	bUtcOff = (nArg > 5 && !ph7_value_is_null(apArg[5]));` |
+|   115 | 1966 | `	rUtcOff = bUtcOff ? ph7_value_to_double(apArg[5]) : 0.0;` |
 |   114 | 1967 | `	if( !DtSunIsFinite(rLat) \|\| !DtSunIsFinite(rLon)` |
-|   113 | 1968 | `	 \|\| !DtSunIsFinite(rZenith) \|\| !DtSunIsFinite(rUtcOff) ){` |
+|   112 | 1968 | `	 \|\| !DtSunIsFinite(rZenith) \|\| !DtSunIsFinite(rUtcOff) ){` |
 |     9 | 1969 | `		ph7_result_bool(pCtx,0);` |
 |     9 | 1970 | `		return PH7_OK;` |
 |     - | 1971 | `	}` |
-|   108 | 1972 | `	iBase = DtSunLocalMidnight(pVm,iTs,0);` |
-|   108 | 1973 | `	if( !bUtcOff ){` |
+|   107 | 1972 | `	iBase = DtSunLocalMidnight(pVm,iTs,0);` |
+|   107 | 1973 | `	if( !bUtcOff ){` |
 |     - | 1974 | `		/* php reads the zone's offset at the EPOCH, not at $timestamp, so the` |
 |     - | 1975 | `		 * clock face these answer on ignores both DST and every rule change` |
 |     - | 1976 | `		 * since 1970. It shows: Pacific/Kiritimati has been UTC+14 since 1995` |
@@ -1988,10 +1988,10 @@ Coverage: 950/1025 lines (92.68%)
 |     - | 1978 | `		 * +10:30 reads as the +10:00 it was then. Neither is a rounding` |
 |     - | 1979 | `		 * artefact and both were measured -- taking the offset at $timestamp` |
 |     - | 1980 | `		 * instead left every DST day an hour out. */` |
-|    70 | 1981 | `		int bDst = 0,nAbbr = 0;` |
-|    70 | 1982 | `		const char *zAbbr = 0;` |
-|    70 | 1983 | `		iZoneOff = DtTzOffsetOf(DtDefaultTzIndex(pVm),0,(sxi64)0,&bDst,&zAbbr,&nAbbr);` |
-|    70 | 1984 | `		rUtcOff = (double)iZoneOff / 3600.0;` |
+|    69 | 1981 | `		int bDst = 0,nAbbr = 0;` |
+|    69 | 1982 | `		const char *zAbbr = 0;` |
+|    69 | 1983 | `		iZoneOff = DtTzOffsetOf(DtDefaultTzIndex(pVm),0,(sxi64)0,&bDst,&zAbbr,&nAbbr);` |
+|    69 | 1984 | `		rUtcOff = (double)iZoneOff / 3600.0;` |
 |    34 | 1985 | `	}` |
 |     - | 1986 | `	/* Asked at the complement of the zenith and, like date_sun_info(), of the` |
 |     - | 1987 | `	 * sun's UPPER LIMB. The two still disagree by ~133 seconds at one place on` |
@@ -1999,17 +1999,17 @@ Coverage: 950/1025 lines (92.68%)
 |     - | 1989 | `	 * where sun_info asks for 35 -- so the gap is the 15 arcminutes, not a` |
 |     - | 1990 | `	 * missing correction. Dropping the correction here instead moved every` |
 |     - | 1991 | `	 * answer ~135 seconds the wrong way. */` |
-|   108 | 1992 | `	rc = DtSunRiseSet(iBase,rLon,rLat,90.0 - rZenith,1,&rRise,&rSet,&rTransit);` |
-|   108 | 1993 | `	if( rc != 0 ){` |
+|   107 | 1992 | `	rc = DtSunRiseSet(iBase,rLon,rLat,90.0 - rZenith,1,&rRise,&rSet,&rTransit);` |
+|   107 | 1993 | `	if( rc != 0 ){` |
 |    11 | 1994 | `		ph7_result_bool(pCtx,0);` |
 |    11 | 1995 | `		return PH7_OK;` |
 |     - | 1996 | `	}` |
-|    98 | 1997 | `	rHours = bSunset ? rSet : rRise;` |
-|    98 | 1998 | `	if( iFormat == 0 /* SUNFUNCS_RET_TIMESTAMP */ ){` |
+|    97 | 1997 | `	rHours = bSunset ? rSet : rRise;` |
+|    97 | 1998 | `	if( iFormat == 0 /* SUNFUNCS_RET_TIMESTAMP */ ){` |
 |     - | 1999 | `		/* $utcOffset is deliberately not applied: a timestamp is already an` |
 |     - | 2000 | `		 * absolute instant, and php leaves it alone. */` |
-|    30 | 2001 | `		ph7_result_int64(pCtx,DtSunStamp(iBase,rHours));` |
-|    30 | 2002 | `		return PH7_OK;` |
+|    29 | 2001 | `		ph7_result_int64(pCtx,DtSunStamp(iBase,rHours));` |
+|    29 | 2002 | `		return PH7_OK;` |
 |     - | 2003 | `	}` |
 |    69 | 2004 | `	rHours += rUtcOff;` |
 |     - | 2005 | `	/* Fold into a clock face. php does this for both remaining shapes, so an` |
@@ -2029,20 +2029,20 @@ Coverage: 950/1025 lines (92.68%)
 |    23 | 2019 | `		ph7_result_string_format(pCtx,"%02d:%02d",iHour,iMin);` |
 |     - | 2020 | `	}` |
 |    23 | 2021 | `	return PH7_OK;` |
-|    65 | 2022 | `}` |
+|    64 | 2022 | `}` |
 |     - | 2023 | `/*` |
 |     - | 2024 | ` * string\|int\|float\|false date_sunrise(int $timestamp, int $returnFormat = SUNFUNCS_RET_STRING,` |
 |     - | 2025 | ` *   ?float $latitude = null, ?float $longitude = null, ?float $zenith = null, ?float $utcOffset = null)` |
 |     - | 2026 | ` */` |
 |    54 | 2027 | `PH7_PRIVATE int PH7_builtin_date_sunrise(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     2 | 2028 | `{` |
-|    56 | 2029 | `	return DtSunRiseSetDoor(pCtx,nArg,apArg,0);` |
-|     2 | 2030 | `}` |
+|     1 | 2028 | `{` |
+|    55 | 2029 | `	return DtSunRiseSetDoor(pCtx,nArg,apArg,0);` |
+|     1 | 2030 | `}` |
 |     - | 2031 | `/* The same door, the other end of the arc. */` |
 |    72 | 2032 | `PH7_PRIVATE int PH7_builtin_date_sunset(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     2 | 2033 | `{` |
-|    74 | 2034 | `	return DtSunRiseSetDoor(pCtx,nArg,apArg,1);` |
-|     2 | 2035 | `}` |
+|     1 | 2033 | `{` |
+|    73 | 2034 | `	return DtSunRiseSetDoor(pCtx,nArg,apArg,1);` |
+|     1 | 2035 | `}` |
 |     - | 2036 |  |
 |     - | 2037 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |     - | 2038 |  |

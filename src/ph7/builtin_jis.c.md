@@ -75,30 +75,30 @@ Coverage: 58/63 lines (92.06%)
 |    - |   65 | ` * rather than the first of several.` |
 |    - |   66 | ` */` |
 |  360 |   67 | `PH7_PRIVATE int PH7_JisX0208FromUni(sxu32 cp,int *piRow,int *piCell)` |
-|    3 |   68 | `{` |
-|  363 |   69 | `	int iLo = 0,iHi = PH7_JIS_X0208_COUNT - 1;` |
-|  363 |   70 | `	if( cp > 0xFFFF ){` |
+|    2 |   68 | `{` |
+|  362 |   69 | `	int iLo = 0,iHi = PH7_JIS_X0208_COUNT - 1;` |
+|  362 |   70 | `	if( cp > 0xFFFF ){` |
 |    - |   71 | `		/* Every assigned cell is in the BMP, so nothing above it can hit and` |
 |    - |   72 | `		 * the search need not widen to hold the comparison. */` |
 |  ! 0 |   73 | `		return 0;` |
 |    - |   74 | `	}` |
-| 4571 |   75 | `	while( iLo <= iHi ){` |
-| 4485 |   76 | `		int iMid = iLo + (iHi - iLo) / 2;` |
-| 4485 |   77 | `		int k = (int)aJisX0208Rev[iMid];` |
-| 4485 |   78 | `		sxu32 u = (sxu32)aJisX0208Uni[k];` |
-| 4485 |   79 | `		if( u == cp ){` |
+| 4570 |   75 | `	while( iLo <= iHi ){` |
+| 4484 |   76 | `		int iMid = iLo + (iHi - iLo) / 2;` |
+| 4484 |   77 | `		int k = (int)aJisX0208Rev[iMid];` |
+| 4484 |   78 | `		sxu32 u = (sxu32)aJisX0208Uni[k];` |
+| 4484 |   79 | `		if( u == cp ){` |
 |  276 |   80 | `			*piRow  = k / PH7_JIS_X0208_ROWS + 0x21;` |
 |  276 |   81 | `			*piCell = k % PH7_JIS_X0208_ROWS + 0x21;` |
 |  276 |   82 | `			return 1;` |
 |    - |   83 | `		}` |
-| 4211 |   84 | `		if( u < cp ){` |
-| 2031 |   85 | `			iLo = iMid + 1;` |
-| 1017 |   86 | `		}else{` |
-| 2183 |   87 | `			iHi = iMid - 1;` |
+| 4210 |   84 | `		if( u < cp ){` |
+| 2030 |   85 | `			iLo = iMid + 1;` |
+| 1016 |   86 | `		}else{` |
+| 2182 |   87 | `			iHi = iMid - 1;` |
 |    - |   88 | `		}` |
-|    3 |   89 | `	}` |
-|   89 |   90 | `	return 0;` |
-|  183 |   91 | `}` |
+|    2 |   89 | `	}` |
+|   88 |   90 | `	return 0;` |
+|  182 |   91 | `}` |
 |    - |   92 | `/*` |
 |    - |   93 | ` * JIS X 0201's Roman set: ASCII with 0x5C and 0x7E carrying the yen sign and` |
 |    - |   94 | ` * the overline instead of the backslash and the tilde. Answers 0 for a byte` |

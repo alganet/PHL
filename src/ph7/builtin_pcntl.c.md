@@ -458,12 +458,12 @@ Coverage: 581/844 lines (68.84%)
 |       - |  448 | ` * SIG_DFL; without that a still-installed handler would fire into a VM whose` |
 |       - |  449 | ` * allocator has been released.` |
 |       - |  450 | ` */` |
-|    6701 |  451 | `PH7_PRIVATE void PH7_PcntlVmRelease(ph7_vm *pVm)` |
+|    6995 |  451 | `PH7_PRIVATE void PH7_PcntlVmRelease(ph7_vm *pVm)` |
 |       - |  452 | `{` |
-|    6701 |  453 | `	pcntl_state *pS = (pcntl_state *)pVm->pPcntl;` |
+|    6995 |  453 | `	pcntl_state *pS = (pcntl_state *)pVm->pPcntl;` |
 |       - |  454 | `	int i;` |
-|    6701 |  455 | `	if( pS == 0 ){` |
-|    6691 |  456 | `		return;` |
+|    6995 |  455 | `	if( pS == 0 ){` |
+|    6985 |  456 | `		return;` |
 |       - |  457 | `	}` |
 |       - |  458 | `	/* php's request shutdown puts EVERY signal its table names back to SIG_DFL,` |
 |       - |  459 | `	 * not just the ones it installed a C handler for -- a SIG_IGN a script left` |
@@ -482,7 +482,7 @@ Coverage: 581/844 lines (68.84%)
 |      10 |  472 | `		nPcntlHead = nPcntlTail = 0;` |
 |       4 |  473 | `	}` |
 |      10 |  474 | `	SyMemBackendFree(&pVm->sAllocator,pS);` |
-|    3345 |  475 | `}` |
+|    3492 |  475 | `}` |
 |       - |  476 |  |
 |       - |  477 | `/* --- Screens ------------------------------------------------------------ */` |
 |       - |  478 |  |
@@ -1754,24 +1754,24 @@ Coverage: 581/844 lines (68.84%)
 |       - | 1744 | `#endif` |
 |       - | 1745 | `};` |
 |       - | 1746 | `/* The shared expander: pUserData carries the value (SX_INT_TO_PTR). */` |
-|    8543 | 1747 | `static void PcntlConstExpand(ph7_value *pVal,void *pUserData)` |
+|    9743 | 1747 | `static void PcntlConstExpand(ph7_value *pVal,void *pUserData)` |
 |       - | 1748 | `{` |
-|    8543 | 1749 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
-|    8543 | 1750 | `}` |
-|    6691 | 1751 | `PH7_PRIVATE void PH7_RegisterPcntlConstants(ph7_vm *pVm)` |
+|    9743 | 1749 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
+|    9743 | 1750 | `}` |
+|    6985 | 1751 | `PH7_PRIVATE void PH7_RegisterPcntlConstants(ph7_vm *pVm)` |
 |       - | 1752 | `{` |
 |       - | 1753 | `	sxu32 n;` |
-|  803008 | 1754 | `	for( n = 0 ; n < SX_ARRAYSIZE(aPcntlConst) ; ++n ){` |
-| 1167057 | 1755 | `		ph7_create_constant(&(*pVm),aPcntlConst[n].zName,PcntlConstExpand,` |
-|  796317 | 1756 | `			SX_INT_TO_PTR(aPcntlConst[n].iValue));` |
-|  370740 | 1757 | `	}` |
+|  838288 | 1754 | `	for( n = 0 ; n < SX_ARRAYSIZE(aPcntlConst) ; ++n ){` |
+| 1218360 | 1755 | `		ph7_create_constant(&(*pVm),aPcntlConst[n].zName,PcntlConstExpand,` |
+|  831303 | 1756 | `			SX_INT_TO_PTR(aPcntlConst[n].iValue));` |
+|  387057 | 1757 | `	}` |
 |       - | 1758 | `#ifdef SIGRTMIN` |
-|    3351 | 1759 | `	ph7_create_constant(&(*pVm),"SIGRTMIN",PcntlConstExpand,SX_INT_TO_PTR(SIGRTMIN));` |
+|    3498 | 1759 | `	ph7_create_constant(&(*pVm),"SIGRTMIN",PcntlConstExpand,SX_INT_TO_PTR(SIGRTMIN));` |
 |       - | 1760 | `#endif` |
 |       - | 1761 | `#ifdef SIGRTMAX` |
-|    3351 | 1762 | `	ph7_create_constant(&(*pVm),"SIGRTMAX",PcntlConstExpand,SX_INT_TO_PTR(SIGRTMAX));` |
+|    3498 | 1762 | `	ph7_create_constant(&(*pVm),"SIGRTMAX",PcntlConstExpand,SX_INT_TO_PTR(SIGRTMAX));` |
 |       - | 1763 | `#endif` |
-|    6691 | 1764 | `}` |
+|    6985 | 1764 | `}` |
 |       - | 1765 | `/*` |
 |       - | 1766 | ` * Pcntl\QosClass: php registers this pure enum on EVERY platform, even though` |
 |       - | 1767 | ` * the two functions that read it (pcntl_getqos_class/pcntl_setqos_class) exist` |
@@ -1781,21 +1781,21 @@ Coverage: 581/844 lines (68.84%)
 |       - | 1771 | `static const char * const azPcntlQos[] = {` |
 |       - | 1772 | `	"UserInteractive", "UserInitiated", "Default", "Utility", "Background",` |
 |       - | 1773 | `};` |
-|    7925 | 1774 | `PH7_PRIVATE sxi32 PH7_VmInstallPcntl(ph7_vm *pVm)` |
+|    8445 | 1774 | `PH7_PRIVATE sxi32 PH7_VmInstallPcntl(ph7_vm *pVm)` |
 |       - | 1775 | `{` |
 |       - | 1776 | `	PH7_NativeEnumCase aCase[SX_ARRAYSIZE(azPcntlQos)];` |
 |       - | 1777 | `	sxu32 n;` |
-|   47550 | 1778 | `	for( n = 0 ; n < SX_ARRAYSIZE(azPcntlQos) ; ++n ){` |
-|   39625 | 1779 | `		aCase[n].zName = azPcntlQos[n];` |
-|   39625 | 1780 | `		aCase[n].sValue.zName = 0;` |
-|   39625 | 1781 | `		aCase[n].sValue.iMods = 0;` |
-|   39625 | 1782 | `		aCase[n].sValue.iType = PH7_NATIVE_VAL_NULL;` |
-|   39625 | 1783 | `		aCase[n].sValue.iValue = 0;` |
-|   39625 | 1784 | `		aCase[n].sValue.zValue = 0;` |
-|   39625 | 1785 | `		aCase[n].sValue.rValue = 0.0;` |
-|   19785 | 1786 | `	}` |
-|   11882 | 1787 | `	return PH7_InstallNativeEnum(&(*pVm),"Pcntl\\QosClass",0,` |
-|    3957 | 1788 | `		aCase,SX_ARRAYSIZE(aCase),0,0);` |
+|   50670 | 1778 | `	for( n = 0 ; n < SX_ARRAYSIZE(azPcntlQos) ; ++n ){` |
+|   42225 | 1779 | `		aCase[n].zName = azPcntlQos[n];` |
+|   42225 | 1780 | `		aCase[n].sValue.zName = 0;` |
+|   42225 | 1781 | `		aCase[n].sValue.iMods = 0;` |
+|   42225 | 1782 | `		aCase[n].sValue.iType = PH7_NATIVE_VAL_NULL;` |
+|   42225 | 1783 | `		aCase[n].sValue.iValue = 0;` |
+|   42225 | 1784 | `		aCase[n].sValue.zValue = 0;` |
+|   42225 | 1785 | `		aCase[n].sValue.rValue = 0.0;` |
+|   21085 | 1786 | `	}` |
+|   12662 | 1787 | `	return PH7_InstallNativeEnum(&(*pVm),"Pcntl\\QosClass",0,` |
+|    4217 | 1788 | `		aCase,SX_ARRAYSIZE(aCase),0,0);` |
 |       - | 1789 | `}` |
 |       - | 1790 | `#endif /* the real thing */` |
 |       - | 1791 |  |

@@ -505,11 +505,11 @@ Coverage: 745/875 lines (85.14%)
 |      - |  495 | ` * Return` |
 |      - |  496 | ` *  The absolute value of number.` |
 |      - |  497 | ` */` |
-|    148 |  498 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    150 |  498 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      3 |  499 | `{` |
 |      - |  500 | `	int is_float;` |
 |      - |  501 | `	/* PHP requires exactly one argument. */` |
-|    151 |  502 | `	if( nArg != 1 ){` |
+|    153 |  502 | `	if( nArg != 1 ){` |
 |    ! 0 |  503 | `		return PH7_VmThrowException(pCtx,` |
 |      - |  504 | `			"ArgumentCountError",` |
 |      - |  505 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -517,14 +517,14 @@ Coverage: 745/875 lines (85.14%)
 |      - |  507 | `			);` |
 |      - |  508 | `	}` |
 |      - |  509 |  |
-|    151 |  510 | `	if( ph7_value_is_null(apArg[0]) ){` |
+|    153 |  510 | `	if( ph7_value_is_null(apArg[0]) ){` |
 |      - |  511 | `		/* php only DEPRECATES null here; PHL rejects it. */` |
 |    ! 0 |  512 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |      - |  513 | `			"abs(): Argument #1 ($num) must be of type int\|float, null given");` |
 |      - |  514 | `	}` |
 |      - |  515 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|    151 |  516 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|    151 |  517 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|    153 |  516 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|    153 |  517 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |      - |  518 | `		int len;` |
 |      9 |  519 | `		sxu8 bReal = FALSE;` |
 |      9 |  520 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -540,7 +540,7 @@ Coverage: 745/875 lines (85.14%)
 |      7 |  530 | `			is_float = 1;` |
 |      3 |  531 | `		}` |
 |      4 |  532 | `	}` |
-|    151 |  533 | `	if( is_float ){` |
+|    153 |  533 | `	if( is_float ){` |
 |      - |  534 | `		double r,x;` |
 |    113 |  535 | `		x = ph7_value_to_double(apArg[0]);` |
 |      - |  536 | `		/* Perform the requested operation */` |
@@ -549,16 +549,16 @@ Coverage: 745/875 lines (85.14%)
 |     57 |  539 | `	}else{` |
 |      - |  540 | ``		/* Read the full 64-bit value (the old 32-bit `int abs()` truncated any`` |
 |      - |  541 | `		 * magnitude above 2^31 and was UB on INT_MIN). */` |
-|     39 |  542 | `		sxi64 x = ph7_value_to_int64(apArg[0]);` |
-|     39 |  543 | `		if( x == SMALLEST_INT64 ){` |
+|     41 |  542 | `		sxi64 x = ph7_value_to_int64(apArg[0]);` |
+|     41 |  543 | `		if( x == SMALLEST_INT64 ){` |
 |      - |  544 | `			/* abs(PHP_INT_MIN) has no int representation, so PHP returns a float. */` |
 |      3 |  545 | `			ph7_result_double(pCtx,-(double)x);` |
 |      2 |  546 | `		}else{` |
-|     37 |  547 | `			ph7_result_int64(pCtx,x < 0 ? -x : x);` |
+|     39 |  547 | `			ph7_result_int64(pCtx,x < 0 ? -x : x);` |
 |      - |  548 | `		}` |
 |      - |  549 | `	}` |
-|    151 |  550 | `	return PH7_OK;` |
-|     77 |  551 | `}` |
+|    153 |  550 | `	return PH7_OK;` |
+|     78 |  551 | `}` |
 |      - |  552 | `/*` |
 |      - |  553 | ` * float log(float $num, float $base = M_E)` |
 |      - |  554 | ` *  Logarithm of $num to the given base, or the natural logarithm.` |
@@ -823,46 +823,46 @@ Coverage: 745/875 lines (85.14%)
 |      - |  813 | `/*` |
 |      - |  814 | `` * Declare `enum RoundingMode` -- pure, eight cases, php's declaration order.`` |
 |      - |  815 | ` */` |
-|   7925 |  816 | `PH7_PRIVATE sxi32 PH7_VmInstallRoundingMode(ph7_vm *pVm)` |
+|   8445 |  816 | `PH7_PRIVATE sxi32 PH7_VmInstallRoundingMode(ph7_vm *pVm)` |
 |      5 |  817 | `{` |
 |      - |  818 | `	/* The builder DUPLICATES each case name and, for an unbacked enum, keeps no` |
 |      - |  819 | `	 * pointer into sValue at all, so this array may live on the stack. */` |
 |      - |  820 | `	PH7_NativeEnumCase aCase[SX_ARRAYSIZE(aRoundingMode)];` |
 |      - |  821 | `	sxu32 n;` |
-|  71330 |  822 | `	for( n = 0 ; n < SX_ARRAYSIZE(aRoundingMode) ; ++n ){` |
-|  63405 |  823 | `		aCase[n].zName = aRoundingMode[n].zName;` |
+|  76010 |  822 | `	for( n = 0 ; n < SX_ARRAYSIZE(aRoundingMode) ; ++n ){` |
+|  67565 |  823 | `		aCase[n].zName = aRoundingMode[n].zName;` |
 |      - |  824 | `		/* PH7_NATIVE_VAL_NULL: a pure enum's case has no backing value at all. */` |
-|  63405 |  825 | `		aCase[n].sValue.zName = 0;` |
-|  63405 |  826 | `		aCase[n].sValue.iMods = 0;` |
-|  63405 |  827 | `		aCase[n].sValue.iType = PH7_NATIVE_VAL_NULL;` |
-|  63405 |  828 | `		aCase[n].sValue.iValue = 0;` |
-|  63405 |  829 | `		aCase[n].sValue.zValue = 0;` |
-|  63405 |  830 | `		aCase[n].sValue.rValue = 0.0;` |
-|  31661 |  831 | `	}` |
-|  11887 |  832 | `	return PH7_InstallNativeEnum(&(*pVm),"RoundingMode",0,` |
-|   3957 |  833 | `		aCase,SX_ARRAYSIZE(aCase),0,0);` |
+|  67565 |  825 | `		aCase[n].sValue.zName = 0;` |
+|  67565 |  826 | `		aCase[n].sValue.iMods = 0;` |
+|  67565 |  827 | `		aCase[n].sValue.iType = PH7_NATIVE_VAL_NULL;` |
+|  67565 |  828 | `		aCase[n].sValue.iValue = 0;` |
+|  67565 |  829 | `		aCase[n].sValue.zValue = 0;` |
+|  67565 |  830 | `		aCase[n].sValue.rValue = 0.0;` |
+|  33741 |  831 | `	}` |
+|  12667 |  832 | `	return PH7_InstallNativeEnum(&(*pVm),"RoundingMode",0,` |
+|   4217 |  833 | `		aCase,SX_ARRAYSIZE(aCase),0,0);` |
 |      5 |  834 | `}` |
 |      - |  835 | `/*` |
 |      - |  836 | ` * 10**power via an exact lookup table for 0..22, falling back to pow()` |
 |      - |  837 | ` * otherwise. Port of php-src PHP-8.5 ext/standard/math.c php_intpow10().` |
 |      - |  838 | ` */` |
 |    422 |  839 | `static double MathIntPow10(int power)` |
-|      4 |  840 | `{` |
+|      5 |  840 | `{` |
 |      - |  841 | `	static const double powers[] = {` |
 |      - |  842 | `		1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11,` |
 |      - |  843 | `		1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22` |
 |      - |  844 | `	};` |
-|    426 |  845 | `	if( power < 0 \|\| power > 22 ){` |
+|    427 |  845 | `	if( power < 0 \|\| power > 22 ){` |
 |      5 |  846 | `		return pow(10.0, (double)power);` |
 |      - |  847 | `	}` |
-|    422 |  848 | `	return powers[power];` |
-|    215 |  849 | `}` |
+|    423 |  848 | `	return powers[power];` |
+|    216 |  849 | `}` |
 |    318 |  850 | `static double MathRoundBasicEdge(double integral, double exponent, int places)` |
-|      4 |  851 | `{` |
-|    163 |  852 | `	return (places > 0)` |
+|      5 |  851 | `{` |
+|    164 |  852 | `	return (places > 0)` |
 |     98 |  853 | `		? fabs((integral + copysign(0.5, integral)) / exponent)` |
 |    269 |  854 | `		: fabs((integral + copysign(0.5, integral)) * exponent);` |
-|      4 |  855 | `}` |
+|      5 |  855 | `}` |
 |     74 |  856 | `static double MathRoundZeroEdge(double integral, double exponent, int places)` |
 |      1 |  857 | `{` |
 |     38 |  858 | `	return (places > 0)` |
@@ -874,16 +874,16 @@ Coverage: 745/875 lines (85.14%)
 |      - |  864 | ` * Faithful port of php-src PHP-8.5 ext/standard/math.c php_round_helper().` |
 |      - |  865 | ` */` |
 |    416 |  866 | `static double MathRoundHelper(double integral, double value, double exponent, int places, int mode)` |
-|      4 |  867 | `{` |
-|    420 |  868 | `	double value_abs = fabs(value);` |
+|      5 |  867 | `{` |
+|    421 |  868 | `	double value_abs = fabs(value);` |
 |      - |  869 | `	double edge_case;` |
-|    420 |  870 | `	switch( mode ){` |
+|    421 |  870 | `	switch( mode ){` |
 |    105 |  871 | `		case PH7_ROUND_HALF_UP:` |
-|    214 |  872 | `			edge_case = MathRoundBasicEdge(integral, exponent, places);` |
-|    214 |  873 | `			if( value_abs >= edge_case ){` |
+|    215 |  872 | `			edge_case = MathRoundBasicEdge(integral, exponent, places);` |
+|    215 |  873 | `			if( value_abs >= edge_case ){` |
 |    133 |  874 | `				return integral + copysign(1.0, integral);` |
 |      - |  875 | `			}` |
-|     84 |  876 | `			return integral;` |
+|     85 |  876 | `			return integral;` |
 |     16 |  877 | `		case PH7_ROUND_HALF_DOWN:` |
 |     33 |  878 | `			edge_case = MathRoundBasicEdge(integral, exponent, places);` |
 |     33 |  879 | `			if( value_abs > edge_case ){` |
@@ -933,7 +933,7 @@ Coverage: 745/875 lines (85.14%)
 |    ! 0 |  923 | `		default:` |
 |    ! 0 |  924 | `			return integral; /* unreachable: mode validated by the caller */` |
 |      - |  925 | `	}` |
-|    212 |  926 | `}` |
+|    213 |  926 | `}` |
 |      - |  927 | `/*` |
 |      - |  928 | `` * Round `value` to `places` decimals in `mode`. Faithful port of php-src`` |
 |      - |  929 | ` * PHP-8.5 ext/standard/math.c _php_math_round() — the post-8.4` |
@@ -942,41 +942,41 @@ Coverage: 745/875 lines (85.14%)
 |      - |  932 | ` * round(0.285, 2) == 0.29 that the old naive "+0.5" approach got wrong.` |
 |      - |  933 | ` */` |
 |    438 |  934 | `static double MathRound(double value, int places, int mode)` |
-|      4 |  935 | `{` |
+|      5 |  935 | `{` |
 |      - |  936 | `	double exponent, tmp_value, tmp_value2;` |
 |      - |  937 | `	int abs_places;` |
-|    442 |  938 | `	if( !isfinite(value) \|\| value == 0.0 ){` |
+|    443 |  938 | `	if( !isfinite(value) \|\| value == 0.0 ){` |
 |     17 |  939 | `		return value;` |
 |      - |  940 | `	}` |
 |      - |  941 | `	/* mirror php-src's clamp away from INT_MIN */` |
-|    426 |  942 | `	if( places < -2147483647 ){` |
+|    427 |  942 | `	if( places < -2147483647 ){` |
 |    ! 0 |  943 | `		places = -2147483647;` |
 |    ! 0 |  944 | `	}` |
-|    426 |  945 | `	abs_places = places < 0 ? -places : places;` |
-|    426 |  946 | `	exponent = MathIntPow10(abs_places);` |
+|    427 |  945 | `	abs_places = places < 0 ? -places : places;` |
+|    427 |  946 | `	exponent = MathIntPow10(abs_places);` |
 |      - |  947 | `	/*` |
 |      - |  948 | `	 * Extracting the integer part can be off by one ULP due to float error` |
 |      - |  949 | `	 * (e.g. floor(0.285 * 1e10) == 2849999999). Try +/-1 and keep it if it` |
 |      - |  950 | ``	 * divides back to exactly `value`.`` |
 |      - |  951 | `	 */` |
-|    426 |  952 | `	if( value >= 0.0 ){` |
-|    328 |  953 | `		tmp_value = floor(places > 0 ? value * exponent : value / exponent);` |
-|    328 |  954 | `		tmp_value2 = tmp_value + 1.0;` |
-|    166 |  955 | `	}else{` |
+|    427 |  952 | `	if( value >= 0.0 ){` |
+|    329 |  953 | `		tmp_value = floor(places > 0 ? value * exponent : value / exponent);` |
+|    329 |  954 | `		tmp_value2 = tmp_value + 1.0;` |
+|    167 |  955 | `	}else{` |
 |     99 |  956 | `		tmp_value = ceil(places > 0 ? value * exponent : value / exponent);` |
 |     99 |  957 | `		tmp_value2 = tmp_value - 1.0;` |
 |      - |  958 | `	}` |
-|    426 |  959 | `	if( (places > 0 ? tmp_value2 / exponent : tmp_value2 * exponent) == value ){` |
+|    427 |  959 | `	if( (places > 0 ? tmp_value2 / exponent : tmp_value2 * exponent) == value ){` |
 |      7 |  960 | `		tmp_value = tmp_value2;` |
 |      3 |  961 | `	}` |
 |      - |  962 | `	/* Beyond our precision, so rounding it is pointless. */` |
-|    426 |  963 | `	if( fabs(tmp_value) >= 1e16 ){` |
+|    427 |  963 | `	if( fabs(tmp_value) >= 1e16 ){` |
 |      7 |  964 | `		return value;` |
 |      - |  965 | `	}` |
-|    420 |  966 | `	tmp_value = MathRoundHelper(tmp_value, value, exponent, places, mode);` |
-|    420 |  967 | `	if( abs_places < 23 ){` |
-|    420 |  968 | `		tmp_value = (places > 0) ? tmp_value / exponent : tmp_value * exponent;` |
-|    212 |  969 | `	}else{` |
+|    421 |  966 | `	tmp_value = MathRoundHelper(tmp_value, value, exponent, places, mode);` |
+|    421 |  967 | `	if( abs_places < 23 ){` |
+|    421 |  968 | `		tmp_value = (places > 0) ? tmp_value / exponent : tmp_value * exponent;` |
+|    213 |  969 | `	}else{` |
 |      - |  970 | `		/*` |
 |      - |  971 | `		 * Simple division would lose precision here; round-trip through a` |
 |      - |  972 | `		 * string exactly like php-src does (snprintf "%15fe%d" + strtod).` |
@@ -993,8 +993,8 @@ Coverage: 745/875 lines (85.14%)
 |    ! 0 |  983 | `			tmp_value = value;` |
 |    ! 0 |  984 | `		}` |
 |      - |  985 | `	}` |
-|    420 |  986 | `	return tmp_value;` |
-|    223 |  987 | `}` |
+|    421 |  986 | `	return tmp_value;` |
+|    224 |  987 | `}` |
 |      - |  988 | `/*` |
 |      - |  989 | ` * float round ( int\|float $num [, int $precision = 0 [, int $mode = PHP_ROUND_HALF_UP ]] )` |
 |      - |  990 | ` *  Rounds a float.` |
@@ -1336,12 +1336,12 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1326 | ` * Return` |
 |      - | 1327 | ` *  The integer quotient of the division of $a by $b.` |
 |      - | 1328 | ` */` |
-|     30 | 1329 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 | 1330 | `{` |
+|    150 | 1329 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 | 1330 | `{` |
 |      - | 1331 | `	char zGiven[64];` |
 |      - | 1332 | `	sxi64 a,b;` |
 |      - | 1333 | `	/* PHP requires exactly two arguments. */` |
-|     33 | 1334 | `	if( nArg != 2 ){` |
+|    154 | 1334 | `	if( nArg != 2 ){` |
 |    ! 0 | 1335 | `		return PH7_VmThrowException(pCtx,` |
 |      - | 1336 | `			"ArgumentCountError",` |
 |      - | 1337 | `			"intdiv() expects exactly 2 arguments, %d given",` |
@@ -1349,15 +1349,15 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1339 | `			);` |
 |      - | 1340 | `	}` |
 |      - | 1341 | `	/* Type-check argument 1 */` |
-|     30 | 1342 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0])` |
-|     33 | 1343 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
+|    150 | 1342 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0])` |
+|    154 | 1343 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
 |    ! 0 | 1344 | `		return PH7_VmThrowException(pCtx,` |
 |      - | 1345 | `			"TypeError",` |
 |      - | 1346 | `			"intdiv(): Argument #1 ($num1) must be of type int, %s given",` |
 |    ! 0 | 1347 | `			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))` |
 |      - | 1348 | `			);` |
 |      - | 1349 | `	}` |
-|     33 | 1350 | `	if( ph7_value_is_string(apArg[0]) ){` |
+|    154 | 1350 | `	if( ph7_value_is_string(apArg[0]) ){` |
 |      - | 1351 | `		int len;` |
 |      3 | 1352 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
 |      3 | 1353 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -1368,15 +1368,15 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1358 | `		}` |
 |      1 | 1359 | `	}` |
 |      - | 1360 | `	/* Type-check argument 2 */` |
-|     30 | 1361 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
-|     33 | 1362 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
+|    150 | 1361 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
+|    154 | 1362 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
 |    ! 0 | 1363 | `		return PH7_VmThrowException(pCtx,` |
 |      - | 1364 | `			"TypeError",` |
 |      - | 1365 | `			"intdiv(): Argument #2 ($num2) must be of type int, %s given",` |
 |    ! 0 | 1366 | `			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))` |
 |      - | 1367 | `			);` |
 |      - | 1368 | `	}` |
-|     33 | 1369 | `	if( ph7_value_is_string(apArg[1]) ){` |
+|    154 | 1369 | `	if( ph7_value_is_string(apArg[1]) ){` |
 |      - | 1370 | `		int len;` |
 |    ! 0 | 1371 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
 |    ! 0 | 1372 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -1391,33 +1391,33 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1381 | `		/* php's ZPP contract for the two int params (lossy float / float-string` |
 |      - | 1382 | `		 * deprecations); the manual type checks above already covered arrays,` |
 |      - | 1383 | `		 * objects and non-numeric strings with the same messages. */` |
-|     33 | 1384 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[0],"intdiv",1,"$num1","int",&a);` |
-|     33 | 1385 | `		if( rcArg != PH7_OK ){` |
+|    154 | 1384 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[0],"intdiv",1,"$num1","int",&a);` |
+|    154 | 1385 | `		if( rcArg != PH7_OK ){` |
 |    ! 0 | 1386 | `			return rcArg;` |
 |      - | 1387 | `		}` |
-|     33 | 1388 | `		rcArg = PH7_IntArgResolve(pCtx,apArg[1],"intdiv",2,"$num2","int",&b);` |
-|     33 | 1389 | `		if( rcArg != PH7_OK ){` |
+|    154 | 1388 | `		rcArg = PH7_IntArgResolve(pCtx,apArg[1],"intdiv",2,"$num2","int",&b);` |
+|    154 | 1389 | `		if( rcArg != PH7_OK ){` |
 |    ! 0 | 1390 | `			return rcArg;` |
 |      - | 1391 | `		}` |
 |      - | 1392 | `	}` |
 |      - | 1393 | `	/* Check for division by zero */` |
-|     33 | 1394 | `	if( b == 0 ){` |
+|    154 | 1394 | `	if( b == 0 ){` |
 |      6 | 1395 | `		return PH7_VmThrowException(pCtx,` |
 |      - | 1396 | `			"DivisionByZeroError",` |
 |      - | 1397 | `			"Division by zero"` |
 |      - | 1398 | `			);` |
 |      - | 1399 | `	}` |
 |      - | 1400 | `	/* Check for overflow: PHP_INT_MIN / -1 */` |
-|     29 | 1401 | `	if( a == SMALLEST_INT64 && b == -1 ){` |
+|    150 | 1401 | `	if( a == SMALLEST_INT64 && b == -1 ){` |
 |      3 | 1402 | `		return PH7_VmThrowException(pCtx,` |
 |      - | 1403 | `			"ArithmeticError",` |
 |      - | 1404 | `			"Division of PHP_INT_MIN by -1 is not an integer"` |
 |      - | 1405 | `			);` |
 |      - | 1406 | `	}` |
 |      - | 1407 | `	/* Perform integer division */` |
-|     26 | 1408 | `	ph7_result_int64(pCtx, a / b);` |
-|     26 | 1409 | `	return PH7_OK;` |
-|     18 | 1410 | `}` |
+|    147 | 1408 | `	ph7_result_int64(pCtx, a / b);` |
+|    147 | 1409 | `	return PH7_OK;` |
+|     79 | 1410 | `}` |
 |      - | 1411 | `/*` |
 |      - | 1412 | ` * string dechex(int $number)` |
 |      - | 1413 | ` *  Decimal to hexadecimal.` |
@@ -1451,20 +1451,20 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1441 | ` * Return` |
 |      - | 1442 | ` *  Octal string representation of number` |
 |      - | 1443 | ` */` |
-|     16 | 1444 | `PH7_PRIVATE int PH7_builtin_decoct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 1445 | `{` |
+|     20 | 1444 | `PH7_PRIVATE int PH7_builtin_decoct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      2 | 1445 | `{` |
 |      - | 1446 | `	ph7_int64 iVal;` |
-|     17 | 1447 | `	if( nArg < 1 ){` |
+|     22 | 1447 | `	if( nArg < 1 ){` |
 |      - | 1448 | `		/* Missing arguments,return null */` |
 |    ! 0 | 1449 | `		ph7_result_null(pCtx);` |
 |    ! 0 | 1450 | `		return PH7_OK;` |
 |      - | 1451 | `	}` |
 |      - | 1452 | `	/* Extract the given number as a full 64-bit integer (PHP casts $num to int). */` |
-|     17 | 1453 | `	iVal = ph7_value_to_int64(apArg[0]);` |
+|     22 | 1453 | `	iVal = ph7_value_to_int64(apArg[0]);` |
 |      - | 1454 | `	/* Format: the 'q' modifier emits the full unsigned 64-bit two's-complement. */` |
-|     17 | 1455 | `	ph7_result_string_format(pCtx,"%qo",iVal);` |
-|     17 | 1456 | `	return PH7_OK;` |
-|      9 | 1457 | `}` |
+|     22 | 1455 | `	ph7_result_string_format(pCtx,"%qo",iVal);` |
+|     22 | 1456 | `	return PH7_OK;` |
+|     12 | 1457 | `}` |
 |      - | 1458 | `/*` |
 |      - | 1459 | ` * string decbin(int $number)` |
 |      - | 1460 | ` *  Decimal to binary.` |
@@ -1507,18 +1507,18 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1497 | ` * On return the two out-parameters name the digit run; the caller decides what a` |
 |      - | 1498 | ` * leftover non-digit means.` |
 |      - | 1499 | ` */` |
-|  37502 | 1500 | `static void MathBaseTrimPrefix(const char **pz,int *pn,int base)` |
-|      5 | 1501 | `{` |
-|  37507 | 1502 | `	const char *z = *pz;` |
-|  37507 | 1503 | `	const char *zEnd = z + *pn;` |
-|  56451 | 1504 | `	while( z < zEnd && (z[0]==' '\|\|z[0]=='\t'\|\|z[0]=='\n'\|\|z[0]=='\r'\|\|z[0]=='\v'\|\|z[0]=='\f') ){` |
+|  37500 | 1500 | `static void MathBaseTrimPrefix(const char **pz,int *pn,int base)` |
+|      4 | 1501 | `{` |
+|  37504 | 1502 | `	const char *z = *pz;` |
+|  37504 | 1503 | `	const char *zEnd = z + *pn;` |
+|  56446 | 1504 | `	while( z < zEnd && (z[0]==' '\|\|z[0]=='\t'\|\|z[0]=='\n'\|\|z[0]=='\r'\|\|z[0]=='\v'\|\|z[0]=='\f') ){` |
 |     17 | 1505 | `		z++;` |
 |      1 | 1506 | `	}` |
-|  56451 | 1507 | `	while( z < zEnd && (zEnd[-1]==' '\|\|zEnd[-1]=='\t'\|\|zEnd[-1]=='\n'` |
-|  37497 | 1508 | `	                 \|\| zEnd[-1]=='\r'\|\|zEnd[-1]=='\v'\|\|zEnd[-1]=='\f') ){` |
+|  56446 | 1507 | `	while( z < zEnd && (zEnd[-1]==' '\|\|zEnd[-1]=='\t'\|\|zEnd[-1]=='\n'` |
+|  37495 | 1508 | `	                 \|\| zEnd[-1]=='\r'\|\|zEnd[-1]=='\v'\|\|zEnd[-1]=='\f') ){` |
 |     17 | 1509 | `		zEnd--;` |
 |      1 | 1510 | `	}` |
-|  37507 | 1511 | `	if( zEnd - z >= 2 && z[0] == '0' ){` |
+|  37504 | 1511 | `	if( zEnd - z >= 2 && z[0] == '0' ){` |
 |   3739 | 1512 | `		int c = z[1];` |
 |   3736 | 1513 | `		if( (base == 16 && (c=='x'\|\|c=='X'))` |
 |   3725 | 1514 | `		 \|\| (base == 8  && (c=='o'\|\|c=='O'))` |
@@ -1526,9 +1526,9 @@ Coverage: 745/875 lines (85.14%)
 |    149 | 1516 | `			z += 2;` |
 |    134 | 1517 | `		}` |
 |   1808 | 1518 | `	}` |
-|  37387 | 1519 | `	*pz = z;` |
-|  37387 | 1520 | `	*pn = (int)(zEnd - z);` |
-|  37387 | 1521 | `}` |
+|  37384 | 1519 | `	*pz = z;` |
+|  37384 | 1520 | `	*pn = (int)(zEnd - z);` |
+|  37384 | 1521 | `}` |
 |      - | 1522 | `/*` |
 |      - | 1523 | ` * Convert a base-2/8/16 digit string to a number, mirroring PHP's` |
 |      - | 1524 | ` * _php_math_basetozval (ext/standard/math.c) so hexdec/octdec/bindec agree with` |
@@ -1543,36 +1543,36 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1533 | ` * Note: php also raises E_DEPRECATED for skipped invalid characters; that notice` |
 |      - | 1534 | ` * is not emitted here (a deprecation-fidelity residual, value is correct).` |
 |      - | 1535 | ` */` |
-|  37440 | 1536 | `static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int base)` |
-|      5 | 1537 | `{` |
-|  37445 | 1538 | `	sxi64 num = 0;      /* Integer accumulator */` |
-|  37445 | 1539 | `	double fnum = 0;    /* Float accumulator (used once num would overflow) */` |
-|  37445 | 1540 | `	int mode = 0;       /* 0 -> integer accumulation, 1 -> switched to float */` |
-|  37445 | 1541 | `	sxi64 cutoff = SXI64_HIGH / base;      /* PHP_INT_MAX / base */` |
-|  37445 | 1542 | `	int cutlim = (int)(SXI64_HIGH % base); /* PHP_INT_MAX % base */` |
-|  37445 | 1543 | `	int bIgnored = 0;   /* any character skipped below? php deprecates that */` |
+|  37438 | 1536 | `static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int base)` |
+|      4 | 1537 | `{` |
+|  37442 | 1538 | `	sxi64 num = 0;      /* Integer accumulator */` |
+|  37442 | 1539 | `	double fnum = 0;    /* Float accumulator (used once num would overflow) */` |
+|  37442 | 1540 | `	int mode = 0;       /* 0 -> integer accumulation, 1 -> switched to float */` |
+|  37442 | 1541 | `	sxi64 cutoff = SXI64_HIGH / base;      /* PHP_INT_MAX / base */` |
+|  37442 | 1542 | `	int cutlim = (int)(SXI64_HIGH % base); /* PHP_INT_MAX % base */` |
+|  37442 | 1543 | `	int bIgnored = 0;   /* any character skipped below? php deprecates that */` |
 |      - | 1544 | `	int i;` |
-|  37445 | 1545 | `	MathBaseTrimPrefix(&zStr,&nLen,base);` |
-| 113563 | 1546 | `	for( i = 0 ; i < nLen ; ++i ){` |
-|  76123 | 1547 | `		int c = (unsigned char)zStr[i];` |
-|  76123 | 1548 | `		if( c >= '0' && c <= '9' ){` |
-|  58942 | 1549 | `			c -= '0';` |
-|  46967 | 1550 | `		}else if( c >= 'A' && c <= 'Z' ){` |
+|  37442 | 1545 | `	MathBaseTrimPrefix(&zStr,&nLen,base);` |
+| 113556 | 1546 | `	for( i = 0 ; i < nLen ; ++i ){` |
+|  76118 | 1547 | `		int c = (unsigned char)zStr[i];` |
+|  76118 | 1548 | `		if( c >= '0' && c <= '9' ){` |
+|  59106 | 1549 | `			c -= '0';` |
+|  46833 | 1550 | `		}else if( c >= 'A' && c <= 'Z' ){` |
 |      5 | 1551 | `			c -= 'A' - 10;` |
-|  17183 | 1552 | `		}else if( c >= 'a' && c <= 'z' ){` |
-|  17181 | 1553 | `			c -= 'a' - 10;` |
-|   8634 | 1554 | `		}else{` |
+|  17014 | 1552 | `		}else if( c >= 'a' && c <= 'z' ){` |
+|  17012 | 1553 | `			c -= 'a' - 10;` |
+|   8594 | 1554 | `		}else{` |
 |    ! 0 | 1555 | `			bIgnored = 1;` |
 |    ! 0 | 1556 | `			continue; /* Not a digit character: skip */` |
 |      - | 1557 | `		}` |
-|  76123 | 1558 | `		if( c >= base ){` |
+|  76118 | 1558 | `		if( c >= base ){` |
 |     14 | 1559 | `			bIgnored = 1;` |
 |     14 | 1560 | `			continue; /* Digit out of range for this base: skip */` |
 |      - | 1561 | `		}` |
-|  76110 | 1562 | `		if( mode == 0 ){` |
-|  76110 | 1563 | `			if( num < cutoff \|\| (num == cutoff && c <= cutlim) ){` |
-|  76102 | 1564 | `				num = num * base + c;` |
-|  76102 | 1565 | `				continue;` |
+|  76106 | 1562 | `		if( mode == 0 ){` |
+|  76106 | 1563 | `			if( num < cutoff \|\| (num == cutoff && c <= cutlim) ){` |
+|  76098 | 1564 | `				num = num * base + c;` |
+|  76098 | 1565 | `				continue;` |
 |      - | 1566 | `			}` |
 |      - | 1567 | `			/* Adding this digit would overflow the 64-bit integer: fall back to` |
 |      - | 1568 | `			 * float accumulation, seeding it with the value gathered so far. */` |
@@ -1581,7 +1581,7 @@ Coverage: 745/875 lines (85.14%)
 |      4 | 1571 | `		}` |
 |      9 | 1572 | `		fnum = fnum * base + c;` |
 |      5 | 1573 | `	}` |
-|  37445 | 1574 | `	if( bIgnored ){` |
+|  37442 | 1574 | `	if( bIgnored ){` |
 |      - | 1575 | `		/* php 8 skips characters that are not valid digits for this base and only` |
 |      - | 1576 | `		 * DEPRECATES the skipping; the scope policy rejects the deprecated surface loudly, so this` |
 |      - | 1577 | `		 * ValueError ABORTS the call (the result stored below never reaches the caller` |
@@ -1591,12 +1591,12 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1581 | `			"Invalid characters passed for attempted conversion");` |
 |     10 | 1582 | `		return;` |
 |      - | 1583 | `	}` |
-|  37436 | 1584 | `	if( mode == 1 ){` |
+|  37434 | 1584 | `	if( mode == 1 ){` |
 |      9 | 1585 | `		ph7_result_double(pCtx,fnum);` |
 |      5 | 1586 | `	}else{` |
-|  37428 | 1587 | `		ph7_result_int64(pCtx,num);` |
+|  37426 | 1587 | `		ph7_result_int64(pCtx,num);` |
 |      - | 1588 | `	}` |
-|  18902 | 1589 | `}` |
+|  18899 | 1589 | `}` |
 |      - | 1590 | `/*` |
 |      - | 1591 | ` * int64 hexdec(string $hex_string)` |
 |      - | 1592 | ` *  Hexadecimal to decimal.` |
@@ -1606,17 +1606,17 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1596 | ` * Return` |
 |      - | 1597 | ` *  The decimal representation of hex_string (int, or float on overflow)` |
 |      - | 1598 | ` */` |
-|  37248 | 1599 | `PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      5 | 1600 | `{` |
+|  37246 | 1599 | `PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 | 1600 | `{` |
 |      - | 1601 | `	const char *zString;` |
 |      - | 1602 | `	int nLen;` |
-|  37253 | 1603 | `	if( nArg < 1 ){` |
+|  37250 | 1603 | `	if( nArg < 1 ){` |
 |      - | 1604 | `		/* Missing arguments,return -1 */` |
 |    ! 0 | 1605 | `		ph7_result_int(pCtx,-1);` |
 |    ! 0 | 1606 | `		return PH7_OK;` |
 |      - | 1607 | `	}` |
-|  37248 | 1608 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_resource(apArg[0])` |
-|  37253 | 1609 | `	 \|\| PH7_ArgIsUnstringableObject(apArg[0]) ){` |
+|  37246 | 1608 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_resource(apArg[0])` |
+|  37250 | 1609 | `	 \|\| PH7_ArgIsUnstringableObject(apArg[0]) ){` |
 |      - | 1610 | `		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */` |
 |      - | 1611 | `		char zBuf[64];` |
 |    ! 0 | 1612 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
@@ -1627,10 +1627,10 @@ Coverage: 745/875 lines (85.14%)
 |      - | 1617 | `	 * hex-parses that (hexdec(255) == hexdec("255") == 0x255), so route every` |
 |      - | 1618 | `	 * non-throwing value through ph7_value_to_string rather than reading it as` |
 |      - | 1619 | `	 * a decimal integer. */` |
-|  37253 | 1620 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
-|  37253 | 1621 | `	MathBaseToNumber(pCtx,zString,nLen,16);` |
-|  37253 | 1622 | `	return PH7_OK;` |
-|  18806 | 1623 | `}` |
+|  37250 | 1620 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
+|  37250 | 1621 | `	MathBaseToNumber(pCtx,zString,nLen,16);` |
+|  37250 | 1622 | `	return PH7_OK;` |
+|  18803 | 1623 | `}` |
 |      - | 1624 | `/*` |
 |      - | 1625 | ` * int64 bindec(string $bin_string)` |
 |      - | 1626 | ` *  Binary to decimal.` |

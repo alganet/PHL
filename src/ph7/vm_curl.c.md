@@ -45,14 +45,14 @@ Coverage: 1567/1815 lines (86.34%)
 |       - |   35 | ` * whichever thread gets there first (the -S server pre-forks, and` |
 |       - |   36 | ` * PH7_ENABLE_THREADS builds share the process).` |
 |       - |   37 | ` */` |
-|    7927 |   38 | `PH7_PRIVATE void PH7_CurlGlobalInit(void)` |
+|    8447 |   38 | `PH7_PRIVATE void PH7_CurlGlobalInit(void)` |
 |       5 |   39 | `{` |
 |       - |   40 | `	static int bInit = 0;` |
-|    7932 |   41 | `	if( !bInit ){` |
-|    7930 |   42 | `		curl_global_init(CURL_GLOBAL_DEFAULT);` |
-|    7930 |   43 | `		bInit = 1;` |
-|    3957 |   44 | `	}` |
-|    7932 |   45 | `}` |
+|    8452 |   41 | `	if( !bInit ){` |
+|    8450 |   42 | `		curl_global_init(CURL_GLOBAL_DEFAULT);` |
+|    8450 |   43 | `		bInit = 1;` |
+|    4217 |   44 | `	}` |
+|    8452 |   45 | `}` |
 |       - |   46 |  |
 |       - |   47 | `/* ------------------------------------------------------------------------` |
 |       - |   48 | ` * Handle lifetime` |
@@ -206,33 +206,33 @@ Coverage: 1567/1815 lines (86.34%)
 |       - |  196 | ` * previous one opened) and from PH7_CurlVmRelease before the allocator holding` |
 |       - |  197 | ` * the shells is torn down.` |
 |       - |  198 | ` */` |
-|    6717 |  199 | `static void CurlVmSweep(ph7_vm *pVm)` |
+|    7011 |  199 | `static void CurlVmSweep(ph7_vm *pVm)` |
 |       5 |  200 | `{` |
 |       - |  201 | `	phl_curl *pCurl;` |
 |       - |  202 | `	/* The multis first: one still holds the easy handles it was given, and` |
 |       - |  203 | `	 * curl_multi_remove_handle has to reach a CURL* that is still there. */` |
-|    6722 |  204 | `	PH7_CurlMultiVmSweep(&(*pVm));` |
-|    6722 |  205 | `	pCurl = (phl_curl *)pVm->pCurlHandles;` |
-|    7096 |  206 | `	while( pCurl ){` |
+|    7016 |  204 | `	PH7_CurlMultiVmSweep(&(*pVm));` |
+|    7016 |  205 | `	pCurl = (phl_curl *)pVm->pCurlHandles;` |
+|    7390 |  206 | `	while( pCurl ){` |
 |     377 |  207 | `		phl_curl *pNext = pCurl->pNext;` |
 |     377 |  208 | `		PH7_CurlBlankSlot(pCurl->pOwner);` |
 |     377 |  209 | `		CurlFreeHandle(pCurl);` |
 |     377 |  210 | `		SyMemBackendFree(&pVm->sAllocator,pCurl);` |
 |     377 |  211 | `		pCurl = pNext;` |
 |       3 |  212 | `	}` |
-|    6722 |  213 | `	pVm->pCurlHandles = 0;` |
+|    7016 |  213 | `	pVm->pCurlHandles = 0;` |
 |       - |  214 | `	/* And the shares last: one an easy handle was still attached to refuses to` |
 |       - |  215 | `	 * be cleaned up, so nothing may name it by now. */` |
-|    6722 |  216 | `	PH7_CurlShareVmSweep(&(*pVm));` |
-|    6722 |  217 | `}` |
+|    7016 |  216 | `	PH7_CurlShareVmSweep(&(*pVm));` |
+|    7016 |  217 | `}` |
 |      16 |  218 | `PH7_PRIVATE void PH7_CurlVmReset(ph7_vm *pVm)` |
 |     ! 0 |  219 | `{` |
 |      16 |  220 | `	CurlVmSweep(&(*pVm));` |
 |      16 |  221 | `}` |
-|    6701 |  222 | `PH7_PRIVATE void PH7_CurlVmRelease(ph7_vm *pVm)` |
+|    6995 |  222 | `PH7_PRIVATE void PH7_CurlVmRelease(ph7_vm *pVm)` |
 |       5 |  223 | `{` |
-|    6706 |  224 | `	CurlVmSweep(&(*pVm));` |
-|    6706 |  225 | `}` |
+|    7000 |  224 | `	CurlVmSweep(&(*pVm));` |
+|    7000 |  225 | `}` |
 |       - |  226 | `/*` |
 |       - |  227 | ` * Blank the hidden slot of the object whose record we are about to free, so` |
 |       - |  228 | ` * the object cannot outlive its record and then read freed memory to ask` |
@@ -1192,19 +1192,19 @@ Coverage: 1567/1815 lines (86.34%)
 |       - | 1182 | `	{ "CURLOPT_SAFE_UPLOAD",                     -1 },` |
 |       - | 1183 | `};` |
 |       - | 1184 |  |
-|   49973 | 1185 | `static void CurlConstExpand(ph7_value *pVal,void *pUserData)` |
-|       3 | 1186 | `{` |
-|   49976 | 1187 | `	ph7_value_int64(pVal,((const struct CurlConstant *)pUserData)->iValue);` |
-|   49976 | 1188 | `}` |
+|   56763 | 1185 | `static void CurlConstExpand(ph7_value *pVal,void *pUserData)` |
+|       5 | 1186 | `{` |
+|   56768 | 1187 | `	ph7_value_int64(pVal,((const struct CurlConstant *)pUserData)->iValue);` |
+|   56768 | 1188 | `}` |
 |       - | 1189 |  |
-|    6691 | 1190 | `PH7_PRIVATE void PH7_RegisterCurlConstants(ph7_vm *pVm)` |
+|    6985 | 1190 | `PH7_PRIVATE void PH7_RegisterCurlConstants(ph7_vm *pVm)` |
 |       5 | 1191 | `{` |
 |       - | 1192 | `	sxu32 n;` |
-| 4549885 | 1193 | `	for( n = 0 ; n < SX_ARRAYSIZE(aCurlConst) ; ++n ){` |
-| 6811054 | 1194 | `		ph7_create_constant(&(*pVm),aCurlConst[n].zName,CurlConstExpand,` |
-| 4543189 | 1195 | `			(void *)&aCurlConst[n]);` |
-| 2267865 | 1196 | `	}` |
-|    6696 | 1197 | `}` |
+| 4749805 | 1193 | `	for( n = 0 ; n < SX_ARRAYSIZE(aCurlConst) ; ++n ){` |
+| 7110493 | 1194 | `		ph7_create_constant(&(*pVm),aCurlConst[n].zName,CurlConstExpand,` |
+| 4742815 | 1195 | `			(void *)&aCurlConst[n]);` |
+| 2367678 | 1196 | `	}` |
+|    6990 | 1197 | `}` |
 |       - | 1198 |  |
 |       - | 1199 | `/* ===== curl_version() ===== */` |
 |       - | 1200 |  |
@@ -4055,7 +4055,7 @@ Coverage: 1567/1815 lines (86.34%)
 |       - | 4045 |  |
 |       - | 4046 | `/* ===== Installation ===== */` |
 |       - | 4047 |  |
-|    7925 | 4048 | `PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)` |
+|    8445 | 4048 | `PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)` |
 |       5 | 4049 | `{` |
 |       - | 4050 | `	static const struct {` |
 |       - | 4051 | `		const char *zName;` |
@@ -4155,31 +4155,31 @@ Coverage: 1567/1815 lines (86.34%)
 |       - | 4145 | `	};` |
 |       - | 4146 | `	sxu32 n;` |
 |       - | 4147 | `	sxi32 rc;` |
-|    7930 | 4148 | `	PH7_CurlGlobalInit();` |
-|    7930 | 4149 | `	pVm->pCurlHandles = 0;` |
-|  158505 | 4150 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){` |
-|  150580 | 4151 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|   75188 | 4152 | `	}` |
-|    7930 | 4153 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|    7930 | 4154 | `	if( rc == SXRET_OK ){` |
-|    7930 | 4155 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"CurlHandle",sizeof("CurlHandle")-1,FALSE,0);` |
-|    7930 | 4156 | `		if( pClass ){` |
-|    7930 | 4157 | `			pClass->zNewRefusal =` |
+|    8450 | 4148 | `	PH7_CurlGlobalInit();` |
+|    8450 | 4149 | `	pVm->pCurlHandles = 0;` |
+|  168905 | 4150 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){` |
+|  160460 | 4151 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|   80128 | 4152 | `	}` |
+|    8450 | 4153 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    8450 | 4154 | `	if( rc == SXRET_OK ){` |
+|    8450 | 4155 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"CurlHandle",sizeof("CurlHandle")-1,FALSE,0);` |
+|    8450 | 4156 | `		if( pClass ){` |
+|    8450 | 4157 | `			pClass->zNewRefusal =` |
 |       - | 4158 | `				"Cannot directly construct CurlHandle, use curl_init() instead";` |
 |       - | 4159 | ``			/* php's clone_obj: `clone $h` is curl_easy_duphandle(), which is`` |
 |       - | 4160 | `			 * why this class alone is not PH7_CLASS_NOCLONE. Stated on the` |
 |       - | 4161 | `			 * MOUNTED class, like every other handler hook. */` |
-|    7930 | 4162 | `			pClass->xClone = CurlInstanceClone;` |
+|    8450 | 4162 | `			pClass->xClone = CurlInstanceClone;` |
 |       - | 4163 | `			/* ...and php's compare handler, which recognizes nothing: a handle is` |
 |       - | 4164 | `			 * UNCOMPARABLE with everything but itself. */` |
-|    7930 | 4165 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-|    3957 | 4166 | `		}` |
-|    3957 | 4167 | `	}` |
-|    7930 | 4168 | `	if( rc == SXRET_OK ){` |
+|    8450 | 4165 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+|    4217 | 4166 | `		}` |
+|    4217 | 4167 | `	}` |
+|    8450 | 4168 | `	if( rc == SXRET_OK ){` |
 |       - | 4169 | `		/* The multi and share halves, in their own unit (vm_curl_multi.c). */` |
-|    7930 | 4170 | `		rc = PH7_VmInstallCurlMulti(&(*pVm));` |
-|    3957 | 4171 | `	}` |
-|    7930 | 4172 | `	return rc;` |
+|    8450 | 4170 | `		rc = PH7_VmInstallCurlMulti(&(*pVm));` |
+|    4217 | 4171 | `	}` |
+|    8450 | 4172 | `	return rc;` |
 |       5 | 4173 | `}` |
 |       - | 4174 |  |
 |       - | 4175 | `#else` |

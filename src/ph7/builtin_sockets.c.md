@@ -336,34 +336,34 @@ Coverage: 1285/2107 lines (60.99%)
 |       - |  326 | ` * previous one opened) and from PH7_SocketsVmRelease before the allocator` |
 |       - |  327 | ` * holding the shells is torn down.` |
 |       - |  328 | ` */` |
-|    6717 |  329 | `static void SockVmSweep(ph7_vm *pVm)` |
+|    7011 |  329 | `static void SockVmSweep(ph7_vm *pVm)` |
 |       5 |  330 | `{` |
-|    6722 |  331 | `	phl_socket *pSock = (phl_socket *)pVm->pSockets;` |
-|    6722 |  332 | `	phl_addrinfo *pAi = (phl_addrinfo *)pVm->pAddrInfos;` |
-|    6808 |  333 | `	while( pSock ){` |
+|    7016 |  331 | `	phl_socket *pSock = (phl_socket *)pVm->pSockets;` |
+|    7016 |  332 | `	phl_addrinfo *pAi = (phl_addrinfo *)pVm->pAddrInfos;` |
+|    7102 |  333 | `	while( pSock ){` |
 |      89 |  334 | `		phl_socket *pNext = pSock->pNext;` |
 |      89 |  335 | `		SockShut(pSock);` |
 |      89 |  336 | `		SyMemBackendFree(&pVm->sAllocator,pSock);` |
 |      89 |  337 | `		pSock = pNext;` |
 |       3 |  338 | `	}` |
-|    6722 |  339 | `	pVm->pSockets = 0;` |
-|    6730 |  340 | `	while( pAi ){` |
+|    7016 |  339 | `	pVm->pSockets = 0;` |
+|    7024 |  340 | `	while( pAi ){` |
 |       9 |  341 | `		phl_addrinfo *pNext = pAi->pNext;` |
 |       9 |  342 | `		SockFreeAddrInfo(pAi);` |
 |       9 |  343 | `		SyMemBackendFree(&pVm->sAllocator,pAi);` |
 |       9 |  344 | `		pAi = pNext;` |
 |       1 |  345 | `	}` |
-|    6722 |  346 | `	pVm->pAddrInfos = 0;` |
-|    6722 |  347 | `}` |
+|    7016 |  346 | `	pVm->pAddrInfos = 0;` |
+|    7016 |  347 | `}` |
 |      16 |  348 | `PH7_PRIVATE void PH7_SocketsVmReset(ph7_vm *pVm)` |
 |     ! 0 |  349 | `{` |
 |      16 |  350 | `	SockVmSweep(pVm);` |
 |      16 |  351 | `	pVm->iSocketLastErr = 0;` |
 |      16 |  352 | `}` |
-|    6701 |  353 | `PH7_PRIVATE void PH7_SocketsVmRelease(ph7_vm *pVm)` |
+|    6995 |  353 | `PH7_PRIVATE void PH7_SocketsVmRelease(ph7_vm *pVm)` |
 |       5 |  354 | `{` |
-|    6706 |  355 | `	SockVmSweep(pVm);` |
-|    6706 |  356 | `}` |
+|    7000 |  355 | `	SockVmSweep(pVm);` |
+|    7000 |  356 | `}` |
 |       - |  357 |  |
 |       - |  358 | `/* ------------------------------------------------------------------------` |
 |       - |  359 | ` * php's failure model` |
@@ -4222,18 +4222,18 @@ Coverage: 1285/2107 lines (60.99%)
 |       - | 4212 | `	{ "SHUT_RDWR", SHUT_RDWR },` |
 |       - | 4213 | `#endif` |
 |       - | 4214 | `};` |
-|   14137 | 4215 | `static void SockConstExpand(ph7_value *pVal,void *pUserData)` |
-|       4 | 4216 | `{` |
-|   14141 | 4217 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
-|   14141 | 4218 | `}` |
-|    6691 | 4219 | `PH7_PRIVATE void PH7_RegisterSocketsConstants(ph7_vm *pVm)` |
+|   16122 | 4215 | `static void SockConstExpand(ph7_value *pVal,void *pUserData)` |
+|       5 | 4216 | `{` |
+|   16127 | 4217 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
+|   16127 | 4218 | `}` |
+|    6985 | 4219 | `PH7_PRIVATE void PH7_RegisterSocketsConstants(ph7_vm *pVm)` |
 |       5 | 4220 | `{` |
 |       - | 4221 | `	sxu32 n;` |
-| 1335349 | 4222 | `	for( n = 0 ; n < SX_ARRAYSIZE(aSockConst) ; ++n ){` |
-| 1843018 | 4223 | `		ph7_create_constant(&(*pVm),aSockConst[n].zName,SockConstExpand,` |
-| 1328653 | 4224 | `			SX_INT_TO_PTR(aSockConst[n].iValue));` |
-|  514365 | 4225 | `	}` |
-|    6696 | 4226 | `}` |
+| 1394002 | 4222 | `	for( n = 0 ; n < SX_ARRAYSIZE(aSockConst) ; ++n ){` |
+| 1924015 | 4223 | `		ph7_create_constant(&(*pVm),aSockConst[n].zName,SockConstExpand,` |
+| 1387012 | 4224 | `			SX_INT_TO_PTR(aSockConst[n].iValue));` |
+|  537003 | 4225 | `	}` |
+|    6990 | 4226 | `}` |
 |       - | 4227 | `/* The extension's functions, in php's own order. */` |
 |       - | 4228 | `static const ph7_builtin_func aSockFunc[] = {` |
 |       - | 4229 | `	{ "socket_select",            vm_builtin_socket_select            },` |
@@ -4283,10 +4283,10 @@ Coverage: 1285/2107 lines (60.99%)
 |       - | 4273 | `	{ "socket_wsaprotocol_info_release", vm_builtin_socket_wsaprotocol_info_release }` |
 |       - | 4274 | `#endif` |
 |       - | 4275 | `};` |
-|    7925 | 4276 | `PH7_PRIVATE const ph7_builtin_func * PH7_SocketsFuncTable(sxu32 *pnEntry)` |
+|    8445 | 4276 | `PH7_PRIVATE const ph7_builtin_func * PH7_SocketsFuncTable(sxu32 *pnEntry)` |
 |       5 | 4277 | `{` |
-|    7930 | 4278 | `	*pnEntry = SX_ARRAYSIZE(aSockFunc);` |
-|    7930 | 4279 | `	return aSockFunc;` |
+|    8450 | 4278 | `	*pnEntry = SX_ARRAYSIZE(aSockFunc);` |
+|    8450 | 4279 | `	return aSockFunc;` |
 |       5 | 4280 | `}` |
 |       - | 4281 | `/*` |
 |       - | 4282 | `` * `Socket` and `AddressInfo`: two FINAL classes with no method, no constant and`` |
@@ -4297,7 +4297,7 @@ Coverage: 1285/2107 lines (60.99%)
 |       - | 4287 | ` * recognizes nothing, so two distinct sockets are unequal even though both` |
 |       - | 4288 | ` * present as an empty object.` |
 |       - | 4289 | ` */` |
-|    7925 | 4290 | `PH7_PRIVATE sxi32 PH7_VmInstallSockets(ph7_vm *pVm)` |
+|    8445 | 4290 | `PH7_PRIVATE sxi32 PH7_VmInstallSockets(ph7_vm *pVm)` |
 |       5 | 4291 | `{` |
 |       - | 4292 | `	static const PH7_NativePropDef aProp[] = {` |
 |       - | 4293 | `		{ "__res", PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }` |
@@ -4315,11 +4315,11 @@ Coverage: 1285/2107 lines (60.99%)
 |       - | 4305 | `		  SockAddrInfoRelease, 0, 0 }` |
 |       - | 4306 | `	};` |
 |       - | 4307 | `	sxi32 rc;` |
-|    7930 | 4308 | `	pVm->pSockets = 0;` |
-|    7930 | 4309 | `	pVm->pAddrInfos = 0;` |
-|    7930 | 4310 | `	pVm->iSocketLastErr = 0;` |
-|    7930 | 4311 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|    7930 | 4312 | `	if( rc == SXRET_OK ){` |
+|    8450 | 4308 | `	pVm->pSockets = 0;` |
+|    8450 | 4309 | `	pVm->pAddrInfos = 0;` |
+|    8450 | 4310 | `	pVm->iSocketLastErr = 0;` |
+|    8450 | 4311 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    8450 | 4312 | `	if( rc == SXRET_OK ){` |
 |       - | 4313 | `		static const struct { const char *zClass; const char *zMsg; } aRefusal[] = {` |
 |       - | 4314 | `			{ "Socket",` |
 |       - | 4315 | `			  "Cannot directly construct Socket, use socket_create() instead" },` |
@@ -4327,16 +4327,16 @@ Coverage: 1285/2107 lines (60.99%)
 |       - | 4317 | `			  "Cannot directly construct AddressInfo, use socket_addrinfo_lookup() instead" }` |
 |       - | 4318 | `		};` |
 |       - | 4319 | `		sxu32 n;` |
-|   23780 | 4320 | `		for( n = 0 ; n < SX_ARRAYSIZE(aRefusal) ; ++n ){` |
-|   23769 | 4321 | `			ph7_class *pClass = PH7_VmExtractClass(&(*pVm),aRefusal[n].zClass,` |
-|   15850 | 4322 | `				(sxu32)SyStrlen(aRefusal[n].zClass),FALSE,0);` |
-|   15855 | 4323 | `			if( pClass ){` |
-|   15855 | 4324 | `				pClass->zNewRefusal = aRefusal[n].zMsg;` |
-|   15855 | 4325 | `				pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-|    7914 | 4326 | `			}` |
-|    7919 | 4327 | `		}` |
-|    3957 | 4328 | `	}` |
-|    7930 | 4329 | `	return rc;` |
+|   25340 | 4320 | `		for( n = 0 ; n < SX_ARRAYSIZE(aRefusal) ; ++n ){` |
+|   25329 | 4321 | `			ph7_class *pClass = PH7_VmExtractClass(&(*pVm),aRefusal[n].zClass,` |
+|   16890 | 4322 | `				(sxu32)SyStrlen(aRefusal[n].zClass),FALSE,0);` |
+|   16895 | 4323 | `			if( pClass ){` |
+|   16895 | 4324 | `				pClass->zNewRefusal = aRefusal[n].zMsg;` |
+|   16895 | 4325 | `				pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+|    8434 | 4326 | `			}` |
+|    8439 | 4327 | `		}` |
+|    4217 | 4328 | `	}` |
+|    8450 | 4329 | `	return rc;` |
 |       5 | 4330 | `}` |
 |       - | 4331 | `#else` |
 |       - | 4332 | `/* Ensure a non-empty translation unit when the extension is out (MSVC C4206) */` |

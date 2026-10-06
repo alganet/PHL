@@ -2416,7 +2416,7 @@ Coverage: 1195/1606 lines (74.41%)
 |     - | 2406 | ` * serialize handler for it, which is what makes both refusals engine-level` |
 |     - | 2407 | ` * rather than a body's.` |
 |     - | 2408 | ` */` |
-|  7925 | 2409 | `PH7_PRIVATE sxi32 PH7_VmInstallFileinfo(ph7_vm *pVm)` |
+|  8445 | 2409 | `PH7_PRIVATE sxi32 PH7_VmInstallFileinfo(ph7_vm *pVm)` |
 |     5 | 2410 | `{` |
 |     - | 2411 | `	static const PH7_NativeMethodDef aMethod[] = {` |
 |     - | 2412 | `		{ "__construct", PH7_MOD_PUBLIC,` |
@@ -2439,7 +2439,7 @@ Coverage: 1195/1606 lines (74.41%)
 |     - | 2429 | `		aMethod, SX_ARRAYSIZE(aMethod), 0, 0,` |
 |     - | 2430 | `		aProp, SX_ARRAYSIZE(aProp), 0, 0, 0` |
 |     - | 2431 | `	};` |
-|  7930 | 2432 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|  8450 | 2432 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |     5 | 2433 | `}` |
 |     - | 2434 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |     - | 2435 |  |

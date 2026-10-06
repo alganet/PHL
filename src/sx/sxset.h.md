@@ -103,13 +103,13 @@ Coverage: 6/6 lines (100.00%)
 |        - |   93 | ` * same reason; the remaining callers here are the bytecode and literal sets, which` |
 |        - |   94 | ` * are read far less often but pay nothing for this.` |
 |        - |   95 | ` */` |
-| 24618234 |   96 | `SX_STATIC_INLINE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
+| 99845243 |   96 | `SX_STATIC_INLINE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
 |        5 |   97 | `{` |
-| 24618239 |   98 | `	if( nIdx >= pSet->nUsed ){` |
-|       13 |   99 | `		return 0;   /* Out of range */` |
+| 99845248 |   98 | `	if( nIdx >= pSet->nUsed ){` |
+|       15 |   99 | `		return 0;   /* Out of range */` |
 |        - |  100 | `	}` |
-| 24618227 |  101 | `	return (void *)&((char *)pSet->pBase)[nIdx * pSet->eSize];` |
-| 12310128 |  102 | `}` |
+| 99845234 |  101 | `	return (void *)&((char *)pSet->pBase)[nIdx * pSet->eSize];` |
+| 49923869 |  102 | `}` |
 |        - |  103 |  |
 |        - |  104 | `/* SyBlob function prototypes */` |
 |        - |  105 | `PH7_PRIVATE sxi32 SyBlobInit(SyBlob *pBlob,SyMemBackend *pAllocator);` |

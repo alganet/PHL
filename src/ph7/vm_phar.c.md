@@ -178,26 +178,26 @@ Coverage: 2085/3206 lines (65.03%)
 |     - |  168 | ` * one's, which for the -S server is the difference between a stale manifest and` |
 |     - |  169 | ` * a fresh read.` |
 |     - |  170 | ` */` |
-|  6717 |  171 | `static void PharVmSweep(ph7_vm *pVm)` |
+|  7011 |  171 | `static void PharVmSweep(ph7_vm *pVm)` |
 |     5 |  172 | `{` |
-|  6722 |  173 | `	phl_phar *p = (phl_phar *)pVm->pPhars;` |
-|  6757 |  174 | `	while( p ){` |
+|  7016 |  173 | `	phl_phar *p = (phl_phar *)pVm->pPhars;` |
+|  7051 |  174 | `	while( p ){` |
 |    35 |  175 | `		phl_phar *pNext = p->pNext;` |
 |    35 |  176 | `		PharFree(p);` |
 |    35 |  177 | `		p = pNext;` |
 |   ! 0 |  178 | `	}` |
-|  6722 |  179 | `	pVm->pPhars = 0;` |
-|  6722 |  180 | `	SyBlobRelease(&pVm->sPharRunning);` |
-|  6722 |  181 | `	SyBlobRelease(&pVm->sPharErr);` |
-|  6722 |  182 | `}` |
+|  7016 |  179 | `	pVm->pPhars = 0;` |
+|  7016 |  180 | `	SyBlobRelease(&pVm->sPharRunning);` |
+|  7016 |  181 | `	SyBlobRelease(&pVm->sPharErr);` |
+|  7016 |  182 | `}` |
 |    16 |  183 | `PH7_PRIVATE void PH7_PharVmReset(ph7_vm *pVm)` |
 |   ! 0 |  184 | `{` |
 |    16 |  185 | `	PharVmSweep(&(*pVm));` |
 |    16 |  186 | `}` |
-|  6701 |  187 | `PH7_PRIVATE void PH7_PharVmRelease(ph7_vm *pVm)` |
+|  6995 |  187 | `PH7_PRIVATE void PH7_PharVmRelease(ph7_vm *pVm)` |
 |     5 |  188 | `{` |
-|  6706 |  189 | `	PharVmSweep(&(*pVm));` |
-|  6706 |  190 | `}` |
+|  7000 |  189 | `	PharVmSweep(&(*pVm));` |
+|  7000 |  190 | `}` |
 |     - |  191 | `/* The archive already open under this exact path, or 0. */` |
 |   951 |  192 | `static phl_phar * PharFindByPath(ph7_vm *pVm,const char *zPath,int nPath)` |
 |   ! 0 |  193 | `{` |
@@ -1730,15 +1730,15 @@ Coverage: 2085/3206 lines (65.03%)
 |     - | 1720 | ` * The ARCHIVE half is left exactly as the url spells it -- an alias stays an` |
 |     - | 1721 | `` * alias -- because the entry is the half a `..` can be written in.`` |
 |     - | 1722 | ` */` |
-| 19085 | 1723 | `PH7_PRIVATE int PH7_PharCanonicalUrl(ph7_vm *pVm,const char *zPath,int nPath,SyBlob *pOut)` |
+| 19925 | 1723 | `PH7_PRIVATE int PH7_PharCanonicalUrl(ph7_vm *pVm,const char *zPath,int nPath,SyBlob *pOut)` |
 |     5 | 1724 | `{` |
 |     - | 1725 | `	const char *zEnt,*zErr;` |
 |     - | 1726 | `	phl_phar *pPhar;` |
 |     - | 1727 | `	SyBlob sNorm;` |
 |     - | 1728 | `	int nEnt,nHead;` |
-| 19085 | 1729 | `	if( nPath <= (int)(sizeof("phar://")-1)` |
-| 19090 | 1730 | `	 \|\| SyStrnicmp(zPath,"phar://",sizeof("phar://")-1) != 0 ){` |
-| 19070 | 1731 | `		return 0;` |
+| 19925 | 1729 | `	if( nPath <= (int)(sizeof("phar://")-1)` |
+| 19930 | 1730 | `	 \|\| SyStrnicmp(zPath,"phar://",sizeof("phar://")-1) != 0 ){` |
+| 19910 | 1731 | `		return 0;` |
 |     - | 1732 | `	}` |
 |    20 | 1733 | `	nHead = (int)(sizeof("phar://")-1);` |
 |    20 | 1734 | `	pPhar = PharResolveUrl(pVm,&zPath[nHead],nPath - nHead,&zEnt,&nEnt,&zErr);` |
@@ -1755,7 +1755,7 @@ Coverage: 2085/3206 lines (65.03%)
 |    10 | 1745 | `	}` |
 |    20 | 1746 | `	SyBlobRelease(&sNorm);` |
 |    20 | 1747 | `	return 1;` |
-|  9542 | 1748 | `}` |
+|  9962 | 1748 | `}` |
 |     - | 1749 | `/* ------------------------------------------------------------------ */` |
 |     - | 1750 | `/* The phar:// device                                                  */` |
 |     - | 1751 | `/* ------------------------------------------------------------------ */` |
@@ -2098,9 +2098,9 @@ Coverage: 2085/3206 lines (65.03%)
 |     - | 2088 | `	PharStreamStat    /* xStat */` |
 |     - | 2089 | `};` |
 |   113 | 2090 | `PH7_PRIVATE int PH7_PharStreamIs(const ph7_io_stream *pStream)` |
-|     2 | 2091 | `{` |
-|   115 | 2092 | `	return pStream == &sPHAR_Stream;` |
-|     2 | 2093 | `}` |
+|     1 | 2091 | `{` |
+|   114 | 2092 | `	return pStream == &sPHAR_Stream;` |
+|     1 | 2093 | `}` |
 |     - | 2094 | `/*` |
 |     - | 2095 | `` * The stat family over a `phar://` path. php routes every one of its members`` |
 |     - | 2096 | `` * through the wrapper's url_stat, which is what makes `file_exists()`,`` |
@@ -4236,7 +4236,7 @@ Coverage: 2085/3206 lines (65.03%)
 |    43 | 4226 | `	SXUNUSED(pVm);` |
 |    43 | 4227 | `	SXUNUSED(pThis);` |
 |    90 | 4228 | `}` |
-|  7925 | 4229 | `PH7_PRIVATE sxi32 PH7_VmInstallPhar(ph7_vm *pVm)` |
+|  8445 | 4229 | `PH7_PRIVATE sxi32 PH7_VmInstallPhar(ph7_vm *pVm)` |
 |     5 | 4230 | `{` |
 |     - | 4231 | `	static const PH7_NativePropDef aProp[] = {` |
 |     - | 4232 | `		{ PHAR_SLOT_RES, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN,` |
@@ -4401,10 +4401,10 @@ Coverage: 2085/3206 lines (65.03%)
 |     - | 4391 | `		  aInfoMethod, SX_ARRAYSIZE(aInfoMethod), 0, 0,` |
 |     - | 4392 | `		  aInfoProp, SX_ARRAYSIZE(aInfoProp), PharInstanceRelease, 0, 0 }` |
 |     - | 4393 | `	};` |
-|  7930 | 4394 | `	pVm->pPhars = 0;` |
-|  7930 | 4395 | `	SyBlobInit(&pVm->sPharRunning,&pVm->sAllocator);` |
-|  7930 | 4396 | `	SyBlobInit(&pVm->sPharErr,&pVm->sAllocator);` |
-|  7930 | 4397 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  8450 | 4394 | `	pVm->pPhars = 0;` |
+|  8450 | 4395 | `	SyBlobInit(&pVm->sPharRunning,&pVm->sAllocator);` |
+|  8450 | 4396 | `	SyBlobInit(&pVm->sPharErr,&pVm->sAllocator);` |
+|  8450 | 4397 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 4398 | `}` |
 |     - | 4399 | `/* ------------------------------------------------------------------ */` |
 |     - | 4400 | `/* The path operations over an archive                                 */` |

@@ -121,26 +121,26 @@ Coverage: 2612/2887 lines (90.47%)
 |    - |  111 | ` * one's database) and from PH7_PdoVmRelease before the allocator that holds the` |
 |    - |  112 | ` * shells is torn down.` |
 |    - |  113 | ` */` |
-| 6717 |  114 | `static void PdoVmSweep(ph7_vm *pVm)` |
+| 7011 |  114 | `static void PdoVmSweep(ph7_vm *pVm)` |
 |    5 |  115 | `{` |
-| 6722 |  116 | `	phl_pdo *pConn = (phl_pdo *)pVm->pPdoConns;` |
-| 6902 |  117 | `	while( pConn ){` |
+| 7016 |  116 | `	phl_pdo *pConn = (phl_pdo *)pVm->pPdoConns;` |
+| 7196 |  117 | `	while( pConn ){` |
 |  184 |  118 | `		phl_pdo *pNext = pConn->pNext;` |
 |  184 |  119 | `		PdoBlankSlot(pConn->pOwner);` |
 |  184 |  120 | `		PH7_PdoFreeConn(pConn);` |
 |  184 |  121 | `		SyMemBackendFree(&pVm->sAllocator,pConn);` |
 |  184 |  122 | `		pConn = pNext;` |
 |    4 |  123 | `	}` |
-| 6722 |  124 | `	pVm->pPdoConns = 0;` |
-| 6722 |  125 | `}` |
+| 7016 |  124 | `	pVm->pPdoConns = 0;` |
+| 7016 |  125 | `}` |
 |   16 |  126 | `PH7_PRIVATE void PH7_PdoVmReset(ph7_vm *pVm)` |
 |  ! 0 |  127 | `{` |
 |   16 |  128 | `	PdoVmSweep(&(*pVm));` |
 |   16 |  129 | `}` |
-| 6701 |  130 | `PH7_PRIVATE void PH7_PdoVmRelease(ph7_vm *pVm)` |
+| 6995 |  130 | `PH7_PRIVATE void PH7_PdoVmRelease(ph7_vm *pVm)` |
 |    5 |  131 | `{` |
-| 6706 |  132 | `	PdoVmSweep(&(*pVm));` |
-| 6706 |  133 | `}` |
+| 7000 |  132 | `	PdoVmSweep(&(*pVm));` |
+| 7000 |  133 | `}` |
 |    - |  134 | `/*` |
 |    - |  135 | ` * Blank the hidden slot of the object that holds a record we are about to` |
 |    - |  136 | ` * free.  Without this the object outlives its record -- a PDOStatement whose` |
@@ -155,11 +155,11 @@ Coverage: 2612/2887 lines (90.47%)
 | 1116 |  145 | `	if( pOwner == 0 ){` |
 | 1028 |  146 | `		return;` |
 |    - |  147 | `	}` |
-|   91 |  148 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
-|   91 |  149 | `	pRes = PH7_ClassInstanceFetchAttr(pOwner,&sAttr);` |
-|   91 |  150 | `	if( pRes ){` |
-|   91 |  151 | `		PH7_MemObjRelease(pRes);` |
-|   91 |  152 | `		MemObjSetType(pRes,MEMOBJ_NULL);` |
+|   92 |  148 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
+|   92 |  149 | `	pRes = PH7_ClassInstanceFetchAttr(pOwner,&sAttr);` |
+|   92 |  150 | `	if( pRes ){` |
+|   92 |  151 | `		PH7_MemObjRelease(pRes);` |
+|   92 |  152 | `		MemObjSetType(pRes,MEMOBJ_NULL);` |
 |   44 |  153 | `	}` |
 |  560 |  154 | `}` |
 |    - |  155 | ``/* The connection behind a `__res` slot value. */`` |
@@ -210,17 +210,17 @@ Coverage: 2612/2887 lines (90.47%)
 |    - |  200 | ` * still reachable while the instance is being torn down.` |
 |    - |  201 | ` */` |
 |  142 |  202 | `static void PdoInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|    4 |  203 | `{` |
-|  146 |  204 | `	phl_pdo *pConn = PdoOfInstance(pThis);` |
+|    3 |  203 | `{` |
+|  145 |  204 | `	phl_pdo *pConn = PdoOfInstance(pThis);` |
 |   71 |  205 | `	SXUNUSED(pVm);` |
-|  146 |  206 | `	if( pConn == 0 \|\| pConn->pOwner != pThis ){` |
+|  145 |  206 | `	if( pConn == 0 \|\| pConn->pOwner != pThis ){` |
 |   45 |  207 | `		return;` |
 |    - |  208 | `	}` |
-|  102 |  209 | `	PdoStmtSweep(pConn);` |
-|  102 |  210 | `	PH7_PdoSqliteBlobSweep(pConn);` |
-|  102 |  211 | `	PH7_PdoSqliteClose(pConn);` |
-|  102 |  212 | `	pConn->pOwner = 0;` |
-|   75 |  213 | `}` |
+|  101 |  209 | `	PdoStmtSweep(pConn);` |
+|  101 |  210 | `	PH7_PdoSqliteBlobSweep(pConn);` |
+|  101 |  211 | `	PH7_PdoSqliteClose(pConn);` |
+|  101 |  212 | `	pConn->pOwner = 0;` |
+|   74 |  213 | `}` |
 |    - |  214 |  |
 |    - |  215 | `/* ------------------------------------------------------------------------` |
 |    - |  216 | ` * Statement lifetime` |
@@ -232,32 +232,32 @@ Coverage: 2612/2887 lines (90.47%)
 |    - |  222 | ` * hidden slot a connection uses.` |
 |    - |  223 | ` */` |
 |  930 |  224 | `PH7_PRIVATE phl_pdo_stmt * PH7_PdoNewStmt(phl_pdo *pConn)` |
-|    3 |  225 | `{` |
-|  933 |  226 | `	phl_pdo_stmt *pSt = (phl_pdo_stmt *)SyMemBackendAlloc(&pConn->pVm->sAllocator,` |
+|    4 |  225 | `{` |
+|  934 |  226 | `	phl_pdo_stmt *pSt = (phl_pdo_stmt *)SyMemBackendAlloc(&pConn->pVm->sAllocator,` |
 |    - |  227 | `		sizeof(phl_pdo_stmt));` |
-|  933 |  228 | `	if( pSt == 0 ){` |
+|  934 |  228 | `	if( pSt == 0 ){` |
 |  ! 0 |  229 | `		return 0;` |
 |    - |  230 | `	}` |
-|  933 |  231 | `	SyZero(pSt,sizeof(phl_pdo_stmt));` |
-|  933 |  232 | `	pSt->pConn = pConn;` |
-|  933 |  233 | `	pSt->iFetchMode = pConn->iDefaultFetch;` |
-|  933 |  234 | `	pSt->iErrState = PDO_ERR_NONE;` |
+|  934 |  231 | `	SyZero(pSt,sizeof(phl_pdo_stmt));` |
+|  934 |  232 | `	pSt->pConn = pConn;` |
+|  934 |  233 | `	pSt->iFetchMode = pConn->iDefaultFetch;` |
+|  934 |  234 | `	pSt->iErrState = PDO_ERR_NONE;` |
 |    - |  235 | ``	/* Retain the PDO object. `$db->query(...)` on a temporary connection hands`` |
 |    - |  236 | `	 * back a statement that outlives it, and php keeps the connection alive` |
 |    - |  237 | `	 * through exactly this reference -- without it the database closes while` |
 |    - |  238 | `	 * the statement is still being read. */` |
-|  933 |  239 | `	pSt->pConnObj = pConn->pOwner;` |
-|  933 |  240 | `	if( pSt->pConnObj ){` |
-|  933 |  241 | `		pSt->pConnObj->iRef++;` |
+|  934 |  239 | `	pSt->pConnObj = pConn->pOwner;` |
+|  934 |  240 | `	if( pSt->pConnObj ){` |
+|  934 |  241 | `		pSt->pConnObj->iRef++;` |
 |  465 |  242 | `	}` |
-|  933 |  243 | `	pSt->pNext = pConn->pStmts;` |
-|  933 |  244 | `	pConn->pStmts = pSt;` |
-|  933 |  245 | `	return pSt;` |
-|  468 |  246 | `}` |
+|  934 |  243 | `	pSt->pNext = pConn->pStmts;` |
+|  934 |  244 | `	pConn->pStmts = pSt;` |
+|  934 |  245 | `	return pSt;` |
+|  469 |  246 | `}` |
 |    - |  247 | `/* Drop what bindValue()/bindParam() recorded. */` |
 | 1860 |  248 | `static void PdoBindListFree(ph7_vm *pVm,phl_pdo_bind *pB)` |
-|    3 |  249 | `{` |
-| 1997 |  250 | `	while( pB ){` |
+|    4 |  249 | `{` |
+| 1998 |  250 | `	while( pB ){` |
 |  136 |  251 | `		phl_pdo_bind *pNext = pB->pNext;` |
 |  136 |  252 | `		if( pB->zName ){` |
 |   18 |  253 | `			SyMemBackendFree(&pVm->sAllocator,pB->zName);` |
@@ -268,45 +268,45 @@ Coverage: 2612/2887 lines (90.47%)
 |  136 |  258 | `		SyMemBackendFree(&pVm->sAllocator,pB);` |
 |  136 |  259 | `		pB = pNext;` |
 |    2 |  260 | `	}` |
-| 1863 |  261 | `}` |
+| 1864 |  261 | `}` |
 |  930 |  262 | `static void PdoBindsClear(phl_pdo_stmt *pSt)` |
-|    3 |  263 | `{` |
-|  933 |  264 | `	PdoBindListFree(pSt->pConn->pVm,pSt->pBinds);` |
-|  933 |  265 | `	PdoBindListFree(pSt->pConn->pVm,pSt->pColBinds);` |
-|  933 |  266 | `	pSt->pBinds = 0;` |
-|  933 |  267 | `	pSt->pColBinds = 0;` |
-|  933 |  268 | `}` |
+|    4 |  263 | `{` |
+|  934 |  264 | `	PdoBindListFree(pSt->pConn->pVm,pSt->pBinds);` |
+|  934 |  265 | `	PdoBindListFree(pSt->pConn->pVm,pSt->pColBinds);` |
+|  934 |  266 | `	pSt->pBinds = 0;` |
+|  934 |  267 | `	pSt->pColBinds = 0;` |
+|  934 |  268 | `}` |
 |  930 |  269 | `PH7_PRIVATE void PH7_PdoFreeStmt(phl_pdo_stmt *pSt)` |
-|    3 |  270 | `{` |
-|  933 |  271 | `	PdoBindsClear(pSt);` |
-|  933 |  272 | `	PdoStmtLazyClear(pSt);` |
-|  933 |  273 | `	if( pSt->pLazyRow ){` |
+|    4 |  270 | `{` |
+|  934 |  271 | `	PdoBindsClear(pSt);` |
+|  934 |  272 | `	PdoStmtLazyClear(pSt);` |
+|  934 |  273 | `	if( pSt->pLazyRow ){` |
 |    - |  274 | `		/* A lazy row RETAINS its statement object, so this cannot run while one` |
 |    - |  275 | `		 * is alive -- except at VM teardown, which releases in no order. Cut the` |
 |    - |  276 | `		 * link from both ends rather than leave the row reading freed memory. */` |
 |    3 |  277 | `		PdoBlankSlot(pSt->pLazyRow);` |
 |    3 |  278 | `		pSt->pLazyRow = 0;` |
 |    1 |  279 | `	}` |
-|  933 |  280 | `	PdoStmtClearFetchState(pSt);` |
-|  933 |  281 | `	PH7_PdoSqliteFinalize(pSt);` |
-|  933 |  282 | `	if( pSt->pConnObj ){` |
+|  934 |  280 | `	PdoStmtClearFetchState(pSt);` |
+|  934 |  281 | `	PH7_PdoSqliteFinalize(pSt);` |
+|  934 |  282 | `	if( pSt->pConnObj ){` |
 |    - |  283 | `		/* drop the reference taken at creation; the connection may go now */` |
-|  933 |  284 | `		ph7_class_instance *pObj = pSt->pConnObj;` |
-|  933 |  285 | `		pSt->pConnObj = 0;` |
-|  933 |  286 | `		PH7_ClassInstanceUnref(pObj);` |
+|  934 |  284 | `		ph7_class_instance *pObj = pSt->pConnObj;` |
+|  934 |  285 | `		pSt->pConnObj = 0;` |
+|  934 |  286 | `		PH7_ClassInstanceUnref(pObj);` |
 |  465 |  287 | `	}` |
-|  933 |  288 | `}` |
+|  934 |  288 | `}` |
 |    - |  289 | `/* Finalize and free every statement of one connection. */` |
 |  278 |  290 | `static void PdoStmtSweep(phl_pdo *pConn)` |
 |    4 |  291 | `{` |
 |  282 |  292 | `	phl_pdo_stmt *pSt = pConn->pStmts;` |
 | 1212 |  293 | `	while( pSt ){` |
-|  933 |  294 | `		phl_pdo_stmt *pNext = pSt->pNext;` |
-|  933 |  295 | `		PdoBlankSlot(pSt->pOwner);` |
-|  933 |  296 | `		PH7_PdoFreeStmt(pSt);` |
-|  933 |  297 | `		SyMemBackendFree(&pConn->pVm->sAllocator,pSt);` |
-|  933 |  298 | `		pSt = pNext;` |
-|    3 |  299 | `	}` |
+|  934 |  294 | `		phl_pdo_stmt *pNext = pSt->pNext;` |
+|  934 |  295 | `		PdoBlankSlot(pSt->pOwner);` |
+|  934 |  296 | `		PH7_PdoFreeStmt(pSt);` |
+|  934 |  297 | `		SyMemBackendFree(&pConn->pVm->sAllocator,pSt);` |
+|  934 |  298 | `		pSt = pNext;` |
+|    4 |  299 | `	}` |
 |  282 |  300 | `	pConn->pStmts = 0;` |
 |  282 |  301 | `}` |
 | 2528 |  302 | `static phl_pdo_stmt * PdoStmtOfInstance(ph7_class_instance *pThis)` |
@@ -324,27 +324,27 @@ Coverage: 2612/2887 lines (90.47%)
 | 2521 |  314 | `	return (phl_pdo_stmt *)ph7_value_to_resource(pRes);` |
 | 1267 |  315 | `}` |
 |  920 |  316 | `static int PdoStmtAttach(ph7_class_instance *pThis,phl_pdo_stmt *pSt)` |
-|    3 |  317 | `{` |
+|    4 |  317 | `{` |
 |    - |  318 | `	SyString sAttr;` |
 |    - |  319 | `	ph7_value *pRes;` |
-|  923 |  320 | `	if( pThis == 0 ){` |
+|  924 |  320 | `	if( pThis == 0 ){` |
 |  ! 0 |  321 | `		return -1;` |
 |    - |  322 | `	}` |
-|  923 |  323 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
-|  923 |  324 | `	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
-|  923 |  325 | `	if( pRes == 0 ){` |
+|  924 |  323 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
+|  924 |  324 | `	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
+|  924 |  325 | `	if( pRes == 0 ){` |
 |  ! 0 |  326 | `		return -1;` |
 |    - |  327 | `	}` |
-|  923 |  328 | `	PH7_MemObjRelease(pRes);` |
-|  923 |  329 | `	pRes->x.pOther = pSt;` |
-|  923 |  330 | `	MemObjSetType(pRes,MEMOBJ_RES);` |
-|  923 |  331 | `	pSt->pOwner = pThis;` |
+|  924 |  328 | `	PH7_MemObjRelease(pRes);` |
+|  924 |  329 | `	pRes->x.pOther = pSt;` |
+|  924 |  330 | `	MemObjSetType(pRes,MEMOBJ_RES);` |
+|  924 |  331 | `	pSt->pOwner = pThis;` |
 |    - |  332 | ``	/* php's write_property refuses a store to `queryString` on a statement a`` |
 |    - |  333 | ``	 * driver built -- and takes one on a `new PDOStatement()`, which has no`` |
 |    - |  334 | `	 * cursor for it to describe. */` |
-|  923 |  335 | `	PH7_NativeMarkAttrReadOnly(pThis,"queryString");` |
-|  923 |  336 | `	return 0;` |
-|  463 |  337 | `}` |
+|  924 |  335 | `	PH7_NativeMarkAttrReadOnly(pThis,"queryString");` |
+|  924 |  336 | `	return 0;` |
+|  464 |  337 | `}` |
 |    - |  338 | `/* The statement object is going away: release its cursor now, as php does. */` |
 |  920 |  339 | `static void PdoStmtInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |    3 |  340 | `{` |
@@ -1058,10 +1058,10 @@ Coverage: 2612/2887 lines (90.47%)
 |   10 | 1048 | `}` |
 |    - | 1049 | `/* A statement's own state, moved to "the last thing succeeded". */` |
 | 1132 | 1050 | `static void PdoStmtOk(phl_pdo_stmt *pSt)` |
-|    3 | 1051 | `{` |
-| 1135 | 1052 | `	pSt->iErrState = PDO_ERR_OK;` |
-| 1135 | 1053 | `	SyMemcpy("00000",pSt->zSqlState,sizeof("00000"));` |
-| 1135 | 1054 | `}` |
+|    4 | 1051 | `{` |
+| 1136 | 1052 | `	pSt->iErrState = PDO_ERR_OK;` |
+| 1136 | 1053 | `	SyMemcpy("00000",pSt->zSqlState,sizeof("00000"));` |
+| 1136 | 1054 | `}` |
 |    - | 1055 | `/* A statement's own state, moved to a failure. The driver detail (if any) is` |
 |    - | 1056 | ` * already on the connection, where both objects read it from. */` |
 |   16 | 1057 | `static void PdoStmtFailed(phl_pdo_stmt *pSt,const char *zSqlState)` |
@@ -1157,23 +1157,23 @@ Coverage: 2612/2887 lines (90.47%)
 |    - | 1147 |  |
 |    - | 1148 | `/* Drop whatever a previous setFetchMode() attached to the statement. */` |
 | 1474 | 1149 | `static void PdoStmtClearFetchState(phl_pdo_stmt *pSt)` |
-|    3 | 1150 | `{` |
-| 1477 | 1151 | `	ph7_vm *pVm = pSt->pConn->pVm;` |
-| 1477 | 1152 | `	if( pSt->zFetchClass ){` |
+|    4 | 1150 | `{` |
+| 1478 | 1151 | `	ph7_vm *pVm = pSt->pConn->pVm;` |
+| 1478 | 1152 | `	if( pSt->zFetchClass ){` |
 |   25 | 1153 | `		SyMemBackendFree(&pVm->sAllocator,pSt->zFetchClass);` |
 |   25 | 1154 | `		pSt->zFetchClass = 0;` |
 |   25 | 1155 | `		pSt->nFetchClass = 0;` |
 |   12 | 1156 | `	}` |
-| 1477 | 1157 | `	if( pSt->pFetchArgs ){` |
+| 1478 | 1157 | `	if( pSt->pFetchArgs ){` |
 |    9 | 1158 | `		ph7_release_value(pVm,pSt->pFetchArgs);` |
 |    9 | 1159 | `		pSt->pFetchArgs = 0;` |
 |    4 | 1160 | `	}` |
-| 1477 | 1161 | `	if( pSt->pFetchInto ){` |
+| 1478 | 1161 | `	if( pSt->pFetchInto ){` |
 |   11 | 1162 | `		ph7_class_instance *pObj = pSt->pFetchInto;` |
 |   11 | 1163 | `		pSt->pFetchInto = 0;` |
 |   11 | 1164 | `		PH7_ClassInstanceUnref(pObj);` |
 |    5 | 1165 | `	}` |
-| 1477 | 1166 | `}` |
+| 1478 | 1166 | `}` |
 |    - | 1167 |  |
 |    - | 1168 | `/* Call a constructor with the arguments FETCH_CLASS was given, if any. */` |
 |   56 | 1169 | `static void PdoCallCtor(ph7_vm *pVm,ph7_class_instance *pObj,ph7_class_method *pCons,` |
@@ -1262,13 +1262,13 @@ Coverage: 2612/2887 lines (90.47%)
 |    - | 1252 | ` * then answers null, which is what php's row does once the walk runs out.` |
 |    - | 1253 | ` */` |
 | 1038 | 1254 | `static void PdoStmtLazyClear(phl_pdo_stmt *pSt)` |
-|    3 | 1255 | `{` |
-| 1041 | 1256 | `	ph7_vm *pVm = pSt->pConn->pVm;` |
-| 1041 | 1257 | `	if( pSt->pLazyVals ){` |
+|    4 | 1255 | `{` |
+| 1042 | 1256 | `	ph7_vm *pVm = pSt->pConn->pVm;` |
+| 1042 | 1257 | `	if( pSt->pLazyVals ){` |
 |   61 | 1258 | `		ph7_release_value(pVm,pSt->pLazyVals);` |
 |   61 | 1259 | `		pSt->pLazyVals = 0;` |
 |   30 | 1260 | `	}` |
-| 1041 | 1261 | `}` |
+| 1042 | 1261 | `}` |
 |    - | 1262 | `/*` |
 |    - | 1263 | ` * Capture the row under the cursor for the lazy object: the RAW column values,` |
 |    - | 1264 | ` * positionally. The value modifiers are NOT applied -- php's row reads them at` |
@@ -1334,17 +1334,17 @@ Coverage: 2612/2887 lines (90.47%)
 |    - | 1324 | ` * context route it.` |
 |    - | 1325 | ` */` |
 | 1478 | 1326 | `static int PdoStmtStep(phl_pdo_stmt *pSt)` |
-|    3 | 1327 | `{` |
-| 1481 | 1328 | `	int rc = PH7_PdoSqliteStep(pSt);` |
-| 1481 | 1329 | `	if( rc < 0 ){` |
+|    4 | 1327 | `{` |
+| 1482 | 1328 | `	int rc = PH7_PdoSqliteStep(pSt);` |
+| 1482 | 1329 | `	if( rc < 0 ){` |
 |    5 | 1330 | `		pSt->bDone = 1;` |
 |    5 | 1331 | `		pSt->bRowPending = 0;` |
 |    5 | 1332 | `		return -1;` |
 |    - | 1333 | `	}` |
-| 1477 | 1334 | `	pSt->bRowPending = (rc == 1);` |
-| 1477 | 1335 | `	pSt->bDone = (rc == 0);` |
-| 1477 | 1336 | `	return rc;` |
-|  742 | 1337 | `}` |
+| 1478 | 1334 | `	pSt->bRowPending = (rc == 1);` |
+| 1478 | 1335 | `	pSt->bDone = (rc == 0);` |
+| 1478 | 1336 | `	return rc;` |
+|  743 | 1337 | `}` |
 |    - | 1338 | `/*` |
 |    - | 1339 | ` * Build one row in the requested shape.  Answers 0 when the cursor has nothing` |
 |    - | 1340 | ` * to hand back, which is what makes fetch() answer false at the end.` |
@@ -4043,30 +4043,30 @@ Coverage: 2612/2887 lines (90.47%)
 |    - | 4033 | ` */` |
 |  920 | 4034 | `static sxi32 PdoStatementCtor(ph7_context *pCtx,phl_pdo *pConn,ph7_class *pClass,` |
 |    - | 4035 | `	ph7_class_instance *pObj)` |
-|    3 | 4036 | `{` |
-|  923 | 4037 | `	ph7_class_method *pCons = PH7_ClassExtractMethod(pClass,"__construct",` |
+|    4 | 4036 | `{` |
+|  924 | 4037 | `	ph7_class_method *pCons = PH7_ClassExtractMethod(pClass,"__construct",` |
 |    - | 4038 | `		sizeof("__construct")-1);` |
-|  923 | 4039 | `	if( pCons == 0 ){` |
-|  915 | 4040 | `		if( pConn->pStmtArgs ){` |
+|  924 | 4039 | `	if( pCons == 0 ){` |
+|  916 | 4040 | `		if( pConn->pStmtArgs ){` |
 |    3 | 4041 | `			return PH7_VmThrowException(pCtx,"Error",` |
 |    - | 4042 | `				"User-supplied statement does not accept constructor arguments");` |
 |    - | 4043 | `		}` |
-|  913 | 4044 | `		return PH7_OK;` |
+|  914 | 4044 | `		return PH7_OK;` |
 |    - | 4045 | `	}` |
 |    9 | 4046 | `	PdoCallCtor(pCtx->pVm,pObj,pCons,pConn->pStmtArgs);` |
 |    9 | 4047 | `	return PH7_OK;` |
-|  463 | 4048 | `}` |
+|  464 | 4048 | `}` |
 |  920 | 4049 | `static ph7_class * PdoStatementClass(ph7_context *pCtx,phl_pdo *pConn)` |
-|    3 | 4050 | `{` |
-|  923 | 4051 | `	if( pConn->zStmtClass ){` |
+|    4 | 4050 | `{` |
+|  924 | 4051 | `	if( pConn->zStmtClass ){` |
 |   32 | 4052 | `		ph7_class *pClass = PH7_VmExtractClass(pCtx->pVm,pConn->zStmtClass,` |
 |   20 | 4053 | `			(sxu32)pConn->nStmtClass,FALSE,0);` |
 |   22 | 4054 | `		if( pClass ){` |
 |   22 | 4055 | `			return pClass;` |
 |    - | 4056 | `		}` |
 |  ! 0 | 4057 | `	}` |
-|  903 | 4058 | `	return PH7_VmExtractClass(pCtx->pVm,"PDOStatement",sizeof("PDOStatement")-1,FALSE,0);` |
-|  463 | 4059 | `}` |
+|  904 | 4058 | `	return PH7_VmExtractClass(pCtx->pVm,"PDOStatement",sizeof("PDOStatement")-1,FALSE,0);` |
+|  464 | 4059 | `}` |
 |    - | 4060 | `/*` |
 |    - | 4061 | ` * PDO::prepare(string $query, array $options = []): PDOStatement\|false` |
 |    - | 4062 | ` *` |
@@ -4164,57 +4164,57 @@ Coverage: 2612/2887 lines (90.47%)
 |    - | 4154 | ` * executed, unlike exec(), which runs them all.` |
 |    - | 4155 | ` */` |
 |  868 | 4156 | `static int vm_builtin_PDO_query(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 | 4157 | `{` |
-|  871 | 4158 | `	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));` |
+|    4 | 4157 | `{` |
+|  872 | 4158 | `	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));` |
 |    - | 4159 | `	phl_pdo_stmt *pSt;` |
 |    - | 4160 | `	ph7_class *pClass;` |
 |    - | 4161 | `	ph7_class_instance *pObj;` |
 |    - | 4162 | `	const char *zSql;` |
-|  871 | 4163 | `	int nSql = 0;` |
-|  871 | 4164 | `	if( pConn == 0 ){` |
+|  872 | 4163 | `	int nSql = 0;` |
+|  872 | 4164 | `	if( pConn == 0 ){` |
 |  ! 0 | 4165 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
 |    - | 4166 | `	}` |
-|  871 | 4167 | `	PH7_PdoTouch(pConn);` |
-|  871 | 4168 | `	zSql = nArg > 0 ? ph7_value_to_string(apArg[0],&nSql) : 0;` |
-|  871 | 4169 | `	if( zSql == 0 \|\| nSql < 1 ){` |
+|  872 | 4167 | `	PH7_PdoTouch(pConn);` |
+|  872 | 4168 | `	zSql = nArg > 0 ? ph7_value_to_string(apArg[0],&nSql) : 0;` |
+|  872 | 4169 | `	if( zSql == 0 \|\| nSql < 1 ){` |
 |    3 | 4170 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |    - | 4171 | `			"PDO::query(): Argument #1 ($query) must not be empty");` |
 |    - | 4172 | `	}` |
-|  869 | 4173 | `	pSt = PH7_PdoNewStmt(pConn);` |
-|  869 | 4174 | `	if( pSt == 0 ){` |
+|  870 | 4173 | `	pSt = PH7_PdoNewStmt(pConn);` |
+|  870 | 4174 | `	if( pSt == 0 ){` |
 |  ! 0 | 4175 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - | 4176 | `	}` |
-|  869 | 4177 | `	if( !PH7_PdoSqlitePrepare(pSt,zSql,nSql) ){` |
+|  870 | 4177 | `	if( !PH7_PdoSqlitePrepare(pSt,zSql,nSql) ){` |
 |    7 | 4178 | `		ph7_result_bool(pCtx,0);` |
 |    7 | 4179 | `		return PH7_PdoRaise(pCtx,pConn,"PDO::query");` |
 |    - | 4180 | `	}` |
-|  863 | 4181 | `	pSt->bExecuted = 1;` |
-|  863 | 4182 | `	if( PdoStmtStep(pSt) < 0 ){` |
+|  864 | 4181 | `	pSt->bExecuted = 1;` |
+|  864 | 4182 | `	if( PdoStmtStep(pSt) < 0 ){` |
 |    3 | 4183 | `		ph7_result_bool(pCtx,0);` |
 |    3 | 4184 | `		return PH7_PdoRaise(pCtx,pConn,"PDO::query");` |
 |    - | 4185 | `	}` |
 |    - | 4186 | `	/* the change count is read once, here: a later statement on the same` |
 |    - | 4187 | `	 * connection would otherwise move what this one reports */` |
-|  861 | 4188 | `	pSt->nChanges = PH7_PdoSqliteColumnCount(pSt) > 0` |
+|  862 | 4188 | `	pSt->nChanges = PH7_PdoSqliteColumnCount(pSt) > 0` |
 |  432 | 4189 | `		? 0 : PH7_PdoSqliteChanges(pConn);` |
-|  861 | 4190 | `	pClass = PdoStatementClass(pCtx,pConn);` |
-|  861 | 4191 | `	pObj = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;` |
-|  861 | 4192 | `	if( pObj == 0 ){` |
+|  862 | 4190 | `	pClass = PdoStatementClass(pCtx,pConn);` |
+|  862 | 4191 | `	pObj = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;` |
+|  862 | 4192 | `	if( pObj == 0 ){` |
 |  ! 0 | 4193 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - | 4194 | `	}` |
-|  861 | 4195 | `	if( PdoStmtAttach(pObj,pSt) != 0 ){` |
+|  862 | 4195 | `	if( PdoStmtAttach(pObj,pSt) != 0 ){` |
 |  ! 0 | 4196 | `		PH7_ClassInstanceUnref(pObj);` |
 |  ! 0 | 4197 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - | 4198 | `	}` |
-|  861 | 4199 | `	PH7_NativeSetAttrStr(pCtx->pVm,pObj,"queryString",zSql,nSql);` |
+|  862 | 4199 | `	PH7_NativeSetAttrStr(pCtx->pVm,pObj,"queryString",zSql,nSql);` |
 |    - | 4200 | `	{` |
-|  861 | 4201 | `		sxi32 rcCtor = PdoStatementCtor(pCtx,pConn,pClass,pObj);` |
-|  861 | 4202 | `		if( rcCtor != PH7_OK ){` |
+|  862 | 4201 | `		sxi32 rcCtor = PdoStatementCtor(pCtx,pConn,pClass,pObj);` |
+|  862 | 4202 | `		if( rcCtor != PH7_OK ){` |
 |    3 | 4203 | `			PH7_ClassInstanceUnref(pObj);` |
 |    3 | 4204 | `			return rcCtor;` |
 |    - | 4205 | `		}` |
 |    - | 4206 | `	}` |
-|  859 | 4207 | `	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){` |
+|  860 | 4207 | `	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){` |
 |    - | 4208 | `		/* php's second argument IS setFetchMode(), run on the statement this` |
 |    - | 4209 | `		 * call just built -- same screen, same per-mode arity, and diagnostics` |
 |    - | 4210 | `		 * that count from PDO::query()'s own signature. A refusal leaves the` |
@@ -4226,12 +4226,12 @@ Coverage: 2612/2887 lines (90.47%)
 |  195 | 4216 | `			return rcMode;` |
 |    - | 4217 | `		}` |
 |   27 | 4218 | `	}` |
-|  665 | 4219 | `	PdoStmtOk(pSt);   /* it ran, and it ran cleanly */` |
+|  666 | 4219 | `	PdoStmtOk(pSt);   /* it ran, and it ran cleanly */` |
 |    - | 4220 | `	/* PH7_NativeResultObject takes the reference this call made: unref'ing` |
 |    - | 4221 | `	 * again here frees the object the result slot is still holding. */` |
-|  665 | 4222 | `	PH7_NativeResultObject(pCtx,pObj);` |
-|  665 | 4223 | `	return PH7_OK;` |
-|  437 | 4224 | `}` |
+|  666 | 4222 | `	PH7_NativeResultObject(pCtx,pObj);` |
+|  666 | 4223 | `	return PH7_OK;` |
+|  438 | 4224 | `}` |
 |    - | 4225 |  |
 |    - | 4226 | `/* ------------------------------------------------------------------------` |
 |    - | 4227 | ` * Transactions` |
@@ -4621,7 +4621,7 @@ Coverage: 2612/2887 lines (90.47%)
 |    - | 4611 | ` * bCompilingBuiltin window; vm_pdo_sqlite.c's installer runs right after and` |
 |    - | 4612 | `` * needs PDO to already be mounted (it is the parent of `Pdo\Sqlite`).`` |
 |    - | 4613 | ` */` |
-| 7925 | 4614 | `PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)` |
+| 8445 | 4614 | `PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)` |
 |    5 | 4615 | `{` |
 |    - | 4616 | `	/* php's own constant values, in its own declaration order. The seven` |
 |    - | 4617 | `	 * deprecated PDO::SQLITE_* rows php still carries are absent by the scope policy; their` |
@@ -4840,11 +4840,11 @@ Coverage: 2612/2887 lines (90.47%)
 |    - | 4830 | `	};` |
 |    - | 4831 | `#undef PDO_INT_CONST` |
 |    - | 4832 | `	sxi32 rc;` |
-| 7930 | 4833 | `	pVm->pPdoConns = 0;` |
+| 8450 | 4833 | `	pVm->pPdoConns = 0;` |
 |    - | 4834 | `	/* ext/pdo declares exactly one function beside its classes. */` |
-| 7930 | 4835 | `	ph7_create_function(&(*pVm),"pdo_drivers",vm_builtin_pdo_drivers,0);` |
-| 7930 | 4836 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-| 7930 | 4837 | `	if( rc == SXRET_OK ){` |
+| 8450 | 4835 | `	ph7_create_function(&(*pVm),"pdo_drivers",vm_builtin_pdo_drivers,0);` |
+| 8450 | 4836 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+| 8450 | 4837 | `	if( rc == SXRET_OK ){` |
 |    - | 4838 | `		ph7_class *pRow;` |
 |    - | 4839 | `		/* php's compare handler for an opaque handle, on all three of ext/pdo's.` |
 |    - | 4840 | ``		 * php gives each of them `zend_objects_not_comparable`: no two connections,`` |
@@ -4853,21 +4853,21 @@ Coverage: 2612/2887 lines (90.47%)
 |    - | 4843 | `		 * alone is true, and that is the engine's identity shortcut answering` |
 |    - | 4844 | ``		 * before any handler. Inherited, so `class MyPdo extends PDO` and`` |
 |    - | 4845 | ``		 * `Pdo\Sqlite` get it the way php's handler table does. */`` |
-| 7930 | 4846 | `		PH7_NativeClassInstallCmpHook(&(*pVm),"PDO",PH7_NativeCmpOpaqueHandle);` |
-| 7930 | 4847 | `		PH7_NativeClassInstallCmpHook(&(*pVm),"PDOStatement",PH7_NativeCmpOpaqueHandle);` |
-| 7930 | 4848 | `		pRow = PH7_VmExtractClass(&(*pVm),"PDORow",sizeof("PDORow")-1,FALSE,0);` |
-| 7930 | 4849 | `		if( pRow ){` |
-| 7930 | 4850 | `			pRow->zNewRefusal = "You may not create a PDORow manually";` |
-| 7930 | 4851 | `			pRow->zNewRefusalClass = "PDOException";` |
-| 7930 | 4852 | `			pRow->xDim = PdoRowDim;` |
-| 7930 | 4853 | `			pRow->xCmp = PH7_NativeCmpOpaqueHandle;` |
-| 3957 | 4854 | `		}` |
+| 8450 | 4846 | `		PH7_NativeClassInstallCmpHook(&(*pVm),"PDO",PH7_NativeCmpOpaqueHandle);` |
+| 8450 | 4847 | `		PH7_NativeClassInstallCmpHook(&(*pVm),"PDOStatement",PH7_NativeCmpOpaqueHandle);` |
+| 8450 | 4848 | `		pRow = PH7_VmExtractClass(&(*pVm),"PDORow",sizeof("PDORow")-1,FALSE,0);` |
+| 8450 | 4849 | `		if( pRow ){` |
+| 8450 | 4850 | `			pRow->zNewRefusal = "You may not create a PDORow manually";` |
+| 8450 | 4851 | `			pRow->zNewRefusalClass = "PDOException";` |
+| 8450 | 4852 | `			pRow->xDim = PdoRowDim;` |
+| 8450 | 4853 | `			pRow->xCmp = PH7_NativeCmpOpaqueHandle;` |
+| 4217 | 4854 | `		}` |
 |    - | 4855 | `		/* The declaration php makes and the object never holds: marked LAZY, and` |
 |    - | 4856 | `		 * nothing materializes it -- every write to this class is refused. */` |
-| 7930 | 4857 | `		PH7_NativeClassMarkLazyProps(&(*pVm),"PDORow",0);` |
-| 7930 | 4858 | `		PH7_NativeClassInstallPropHook(&(*pVm),"PDORow",PdoRowProp);` |
-| 3957 | 4859 | `	}` |
-| 7930 | 4860 | `	return rc;` |
+| 8450 | 4857 | `		PH7_NativeClassMarkLazyProps(&(*pVm),"PDORow",0);` |
+| 8450 | 4858 | `		PH7_NativeClassInstallPropHook(&(*pVm),"PDORow",PdoRowProp);` |
+| 4217 | 4859 | `	}` |
+| 8450 | 4860 | `	return rc;` |
 |    5 | 4861 | `}` |
 |    - | 4862 |  |
 |    - | 4863 | `#else` |

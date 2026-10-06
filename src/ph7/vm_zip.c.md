@@ -1682,22 +1682,22 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 1672 | ` * change to, so every archive is simply dropped. php's own shutdown commits` |
 |    - | 1673 | ` * one an object still holds, and the object's teardown is what does that here,` |
 |    - | 1674 | ` * running before this sweep. */` |
-| 6717 | 1675 | `static void ZipVmSweep(ph7_vm *pVm)` |
+| 7011 | 1675 | `static void ZipVmSweep(ph7_vm *pVm)` |
 |    5 | 1676 | `{` |
-| 6724 | 1677 | `	while( pVm->pZips ){` |
+| 7018 | 1677 | `	while( pVm->pZips ){` |
 |    3 | 1678 | `		phl_zip *pZip = (phl_zip *)pVm->pZips;` |
 |    3 | 1679 | `		pZip->nRef = 1;` |
 |    3 | 1680 | `		ZipRelease(pZip);` |
 |    1 | 1681 | `	}` |
-| 6722 | 1682 | `}` |
+| 7016 | 1682 | `}` |
 |   16 | 1683 | `PH7_PRIVATE void PH7_ZipVmReset(ph7_vm *pVm)` |
 |  ! 0 | 1684 | `{` |
 |   16 | 1685 | `	ZipVmSweep(&(*pVm));` |
 |   16 | 1686 | `}` |
-| 6701 | 1687 | `PH7_PRIVATE void PH7_ZipVmRelease(ph7_vm *pVm)` |
+| 6995 | 1687 | `PH7_PRIVATE void PH7_ZipVmRelease(ph7_vm *pVm)` |
 |    5 | 1688 | `{` |
-| 6706 | 1689 | `	ZipVmSweep(&(*pVm));` |
-| 6706 | 1690 | `}` |
+| 7000 | 1689 | `	ZipVmSweep(&(*pVm));` |
+| 7000 | 1690 | `}` |
 |    - | 1691 | `/*` |
 |    - | 1692 | ` * Write the archive back to the file it names.` |
 |    - | 1693 | ` *` |
@@ -4594,7 +4594,7 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 4584 | `/* ------------------------------------------------------------------ */` |
 |    - | 4585 | `#define ZIP_ICONST(NAME,VALUE) \` |
 |    - | 4586 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (VALUE), 0, 0.0 }` |
-| 7925 | 4587 | `PH7_PRIVATE sxi32 PH7_VmInstallZip(ph7_vm *pVm)` |
+| 8445 | 4587 | `PH7_PRIVATE sxi32 PH7_VmInstallZip(ph7_vm *pVm)` |
 |    5 | 4588 | `{` |
 |    - | 4589 | `	static const PH7_NativeMethodDef aMethod[] = {` |
 |    - | 4590 | `		{ "open", PH7_MOD_PUBLIC, "string $filename, int $flags = 0", "@int\|bool",` |
@@ -4855,18 +4855,18 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 4845 | `		  aProp, SX_ARRAYSIZE(aProp), ZipInstanceRelease, 0, 0 }` |
 |    - | 4846 | `	};` |
 |    - | 4847 | `	sxi32 rc;` |
-| 7930 | 4848 | `	pVm->pZips = 0;` |
-| 7930 | 4849 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-| 7930 | 4850 | `	if( rc != SXRET_OK ){` |
+| 8450 | 4848 | `	pVm->pZips = 0;` |
+| 8450 | 4849 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+| 8450 | 4850 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 4851 | `		return rc;` |
 |    - | 4852 | `	}` |
-| 7930 | 4853 | `	rc = PH7_NativeClassInstallSetHook(&(*pVm),"ZipArchive",ZipSetHook);` |
-| 7930 | 4854 | `	if( rc != SXRET_OK ){` |
+| 8450 | 4853 | `	rc = PH7_NativeClassInstallSetHook(&(*pVm),"ZipArchive",ZipSetHook);` |
+| 8450 | 4854 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 4855 | `		return rc;` |
 |    - | 4856 | `	}` |
-| 7930 | 4857 | `	return PH7_NativeClassInstallNewHook(&(*pVm),"ZipArchive",ZipNewHook);` |
-| 3962 | 4858 | `}` |
-| 7925 | 4859 | `PH7_PRIVATE const ph7_builtin_func * PH7_ZipFuncTable(sxu32 *pnEntry)` |
+| 8450 | 4857 | `	return PH7_NativeClassInstallNewHook(&(*pVm),"ZipArchive",ZipNewHook);` |
+| 4222 | 4858 | `}` |
+| 8445 | 4859 | `PH7_PRIVATE const ph7_builtin_func * PH7_ZipFuncTable(sxu32 *pnEntry)` |
 |    5 | 4860 | `{` |
 |    - | 4861 | `	static const ph7_builtin_func aFunc[] = {` |
 |    - | 4862 | `		{ "zip_open",                     PH7_builtin_zip_open                     },` |
@@ -4880,8 +4880,8 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 4870 | `		{ "zip_entry_filesize",           PH7_builtin_zip_entry_filesize           },` |
 |    - | 4871 | `		{ "zip_entry_compressionmethod",  PH7_builtin_zip_entry_compressionmethod  }` |
 |    - | 4872 | `	};` |
-| 7930 | 4873 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
-| 7930 | 4874 | `	return aFunc;` |
+| 8450 | 4873 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
+| 8450 | 4874 | `	return aFunc;` |
 |    5 | 4875 | `}` |
 |    - | 4876 | `#else /* !PH7_ENABLE_ZLIB \|\| PH7_DISABLE_BUILTIN_FUNC */` |
 |    - | 4877 | `/* No zlib means no ext/zip, exactly as php's own build has none: the two VM` |
