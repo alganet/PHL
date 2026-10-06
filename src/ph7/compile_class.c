@@ -1381,6 +1381,13 @@ loop:
 			}
 			goto Synchronize;
 		}
+		/* A set visibility equal to the read one is no asymmetry: php drops it, so
+		 * `private private(set)` is neither private(set) nor implicitly final.
+		 * public(set) stays -- it is what keeps a public readonly property from
+		 * php's implicit protected(set). */
+		if( iSetLevel == iProtection && iSetLevel != PH7_CLASS_PROT_PUBLIC ){
+			iFlags &= ~(PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET);
+		}
 	}
 	/* readonly property rules (PHP 8.1): cannot be static, must be typed, and
 	 * cannot carry a default value. PHP-exact diagnostics. */
@@ -2204,8 +2211,14 @@ SkipToStringType:
 					}
 					goto Synchronize;
 				}
-				iAttrFlags |= (pArg->iFlags & VM_FUNC_ARG_PRIV_SET)
-					? PH7_CLASS_ATTR_PRIVATE_SET : PH7_CLASS_ATTR_PROTECTED_SET;
+				/* One equal to the read visibility is dropped, as in a class body. */
+				if( (pArg->iFlags & VM_FUNC_ARG_PRIV_SET) ){
+					if( pArg->iPromoteVis != PH7_CLASS_PROT_PRIVATE ){
+						iAttrFlags |= PH7_CLASS_ATTR_PRIVATE_SET;
+					}
+				}else if( pArg->iPromoteVis != PH7_CLASS_PROT_PROTECTED ){
+					iAttrFlags |= PH7_CLASS_ATTR_PROTECTED_SET;
+				}
 			}
 			pAttr = PH7_NewClassAttr(pGen->pVm,&pArg->sName,nLine,pArg->iPromoteVis,iAttrFlags);
 			if( pAttr == 0 ){

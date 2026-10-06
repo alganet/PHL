@@ -1636,9 +1636,31 @@ static void OoInheritPropertyHooks(ph7_class *pBase,ph7_class_attr *pParent,ph7_
 	}
 }
 /*
+ * A property's SET visibility as php's flags hold it, on the PH7_CLASS_PROT_*
+ * scale, or 0 when it has none: an explicit private(set)/protected(set) (the
+ * compiler already dropped one equal to the read visibility), else the
+ * protected(set) php gives a public readonly property nothing else spelled.
+ */
+static sxi32 OoPropSetLevel(const ph7_class_attr *pAttr)
+{
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
+		return PH7_CLASS_PROT_PRIVATE;
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET ){
+		return PH7_CLASS_PROT_PROTECTED;
+	}
+	if( (pAttr->iFlags & (PH7_CLASS_ATTR_READONLY|PH7_CLASS_ATTR_PUBLIC_SET)) == PH7_CLASS_ATTR_READONLY
+	 && pAttr->iProtection == PH7_CLASS_PROT_PUBLIC ){
+		return PH7_CLASS_PROT_PROTECTED;
+	}
+	return 0;
+}
+/*
  * php's do_inherit_property screen for a property the subclass REDECLARES over a
  * non-private one of its base, in php's order: static-ness, readonly-ness, the
- * access level, then the declared type. Every one is reported on the subclass's
+ * set access level, the access level, then the declared type. A child may add a
+ * set visibility only as far as the parent's -- its explicit one, else its read
+ * visibility -- and anything under a get-only virtual parent, which has no set. Every one is reported on the subclass's
  * line and names the class that DECLARED the parent property.
  *
  * The type is INVARIANT -- `int` over `?int` is refused as surely as `string`
@@ -1677,6 +1699,17 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 			"Cannot redeclare %s property %z::$%z as %s %z::$%z",
 			(pParent->iFlags & PH7_CLASS_ATTR_READONLY) ? "readonly" : "non-readonly",&pOwner->sDisp,pName,
 			(pChild->iFlags & PH7_CLASS_ATTR_READONLY) ? "readonly" : "non-readonly",&pSub->sDisp,pName);
+	}
+	if( OoPropSetLevel(pChild) != 0
+	 && (pParent->iFlags & (PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HOOK_SET)) != PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+		sxi32 iPSet = OoPropSetLevel(pParent);
+		if( OoPropSetLevel(pChild) > (iPSet ? iPSet : pParent->iProtection) ){
+			return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+				"Set access level of %z::$%z must be %s (as in class %z)%s",
+				&pSub->sDisp,pName,
+				iPSet == PH7_CLASS_PROT_PRIVATE ? "private(set)" : iPSet ? "protected(set)" : "omitted",
+				&pOwner->sDisp,iPSet ? " or weaker" : "");
+		}
 	}
 	if( pChild->iProtection > pParent->iProtection && pParent->iProtection >= PH7_CLASS_PROT_PUBLIC
 	 && pParent->iProtection <= PH7_CLASS_PROT_PRIVATE ){
@@ -2035,12 +2068,13 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 					SySetRelease(&aInherited);
 					return SXERR_ABORT;
 				}
-			}else if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_FINAL))
-				== PH7_CLASS_ATTR_FINAL ){
+			}else if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0
+				&& (pAttr->iFlags & (PH7_CLASS_ATTR_FINAL|PH7_CLASS_ATTR_PRIVATE_SET)) ){
 				/* PHP 8.4's final PROPERTY: no subclass may redeclare it, however the
 				 * redeclaration is spelled -- a plain or static property of its own, a
 				 * PROMOTED constructor parameter, or a trait it composes -- because all
 				 * three land in the subclass's attribute table before inheritance runs.
+				 * A private(set) one is final without saying so: php sets the flag.
 				 * Same class-line rule and same declaring-class naming as the constant
 				 * above. */
 				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
