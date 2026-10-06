@@ -388,14 +388,14 @@ PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **a
 		PH7_VmClassNameAnchor(&zName,&nName);
 		if( nName > 0 ){
 			/* Perform a hash lookup first */
-			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
+			pEntry = PH7_VmClassEntry(pCtx->pVm,zName,nName);
 		}
 		/* A lone "\" strips to no name, and php hands no name to the autoloader. */
 		if( pEntry == 0 && nName > 0 && iAutoload ){
 			/* Try autoload, then re-check */
 			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
-				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
+				pEntry = PH7_VmClassEntry(pCtx->pVm,zName,nName);
 			}
 		}
 		if( pEntry ){
@@ -446,14 +446,14 @@ PH7_PRIVATE int vm_builtin_interface_exists(ph7_context *pCtx,int nArg,ph7_value
 		PH7_VmClassNameAnchor(&zName,&nName);
 		/* Perform a hash lookup */
 		if( nName > 0 ){
-			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
+			pEntry = PH7_VmClassEntry(pCtx->pVm,zName,nName);
 		}
 		/* A lone "\" strips to no name, and php hands no name to the autoloader. */
 		if( pEntry == 0 && nName > 0 && iAutoload ){
 			/* Try autoload — pass iLoadable=FALSE so we get interfaces too */
 			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
-				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
+				pEntry = PH7_VmClassEntry(pCtx->pVm,zName,nName);
 			}
 		}
 		if( pEntry ){
@@ -503,14 +503,14 @@ PH7_PRIVATE int vm_builtin_trait_exists(ph7_context *pCtx,int nArg,ph7_value **a
 		PH7_VmClassNameAnchor(&zName,&nName);
 		/* Perform a hash lookup */
 		if( nName > 0 ){
-			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
+			pEntry = PH7_VmClassEntry(pCtx->pVm,zName,nName);
 		}
 		/* A lone "\" strips to no name, and php hands no name to the autoloader. */
 		if( pEntry == 0 && nName > 0 && iAutoload ){
 			/* Try autoload — pass iLoadable=FALSE so we get traits too */
 			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
-				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
+				pEntry = PH7_VmClassEntry(pCtx->pVm,zName,nName);
 			}
 		}
 		if( pEntry ){
@@ -577,13 +577,13 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
 	PH7_VmClassNameAnchor(&zOld,&nOld);
 	PH7_VmClassNameAnchor(&zNew,&nNew);
 	/* Perform a hash lookup */
-	pEntry = nOld > 0 ? SyHashGet(&pCtx->pVm->hClass,(const void *)zOld,nOld) : 0;
+	pEntry = nOld > 0 ? PH7_VmClassEntry(pCtx->pVm,zOld,nOld) : 0;
 	if( pEntry == 0 && iAutoload && nOld > 0 ){
 		/* Not declared yet: ask the autoloader, exactly as class_exists() does.
 		 * iLoadable is FALSE so an interface or a trait comes back too — php
 		 * aliases those as readily as a class. */
 		if( PH7_VmTriggerAutoload(pCtx->pVm,zOld,nOld,FALSE) ){
-			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zOld,nOld);
+			pEntry = PH7_VmClassEntry(pCtx->pVm,zOld,nOld);
 		}
 	}
 	if( pEntry ==  0 ){
@@ -596,7 +596,7 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
 	}
 	/* Point to the class */
 	pClass = (ph7_class *)pEntry->pUserData;
-	if( nNew > 0 && SyHashGet(&pCtx->pVm->hClass,(const void *)zNew,nNew) != 0 ){
+	if( nNew > 0 && PH7_VmClassEntry(pCtx->pVm,zNew,nNew) != 0 ){
 		/* The alias name is already a declared class/interface/trait/enum. php
 		 * refuses and — this is php's own quirk, not a slip — names the file and
 		 * line of the class being ALIASED, not of the name already taken. */
@@ -673,7 +673,8 @@ static sxi32 VmDeclaredNameStep(SyHashEntry *pEntry,void *pUserData)
 	struct VmDeclaredList *pList = (struct VmDeclaredList *)pUserData;
 	ph7_class *pClass = (ph7_class *)pEntry->pUserData;
 	SyString *pDecl = &pClass->sName;
-	if( VmDeclaredEntryKind(pClass) != pList->iKind ){
+	if( VmDeclaredEntryKind(pClass) != pList->iKind || (pClass->iFlags & PH7_CLASS_HIDDEN) ){
+		/* ...and a class whose statement has not run is not declared yet */
 		return SXRET_OK;
 	}
 	if( pEntry->nKeyLen == pDecl->nByte
@@ -841,10 +842,10 @@ static ph7_class * VmClassRelationTarget(ph7_context *pCtx,int nArg,ph7_value **
 	/* A leading '\' is the global-namespace anchor for the LOOKUP and part of the
 	 * name for the DIAGNOSTIC: php reports back what it was handed. */
 	PH7_VmClassNameAnchor(&zLook,&nLook);
-	pEntry = nLook > 0 ? SyHashGet(&pCtx->pVm->hClass,(const void *)zLook,nLook) : 0;
+	pEntry = nLook > 0 ? PH7_VmClassEntry(pCtx->pVm,zLook,nLook) : 0;
 	if( pEntry == 0 && nLook > 0 && bAutoload ){
 		if( PH7_VmTriggerAutoload(pCtx->pVm,zLook,nLook,FALSE) ){
-			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zLook,nLook);
+			pEntry = PH7_VmClassEntry(pCtx->pVm,zLook,nLook);
 		}
 	}
 	if( pEntry ){

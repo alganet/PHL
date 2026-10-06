@@ -122,7 +122,7 @@ static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pCla
 		if( pTop ){
 			ph7_class *pPrev = (ph7_class *)pTop->pUserData;
 			while( pPrev ){
-				if( GenStateDeclHoldsName(pGen,pPrev,pClass) ){
+				if( (pPrev->iFlags & PH7_CLASS_HIDDEN) == 0 && GenStateDeclHoldsName(pGen,pPrev,pClass) ){
 					pGen->iFatalTrace = PH7_FATAL_TRACE_RUNTIME;
 					if( pPrev->sFile.nByte > 0 ){
 						PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
@@ -159,7 +159,7 @@ static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pCla
 	if( pEntry ){
 		ph7_class *pPrev = (ph7_class *)pEntry->pUserData;
 		while( pPrev ){
-			if( GenStateDeclHoldsName(pGen,pPrev,pClass) ){
+			if( (pPrev->iFlags & PH7_CLASS_HIDDEN) == 0 && GenStateDeclHoldsName(pGen,pPrev,pClass) ){
 				/* php cannot early-bind a name it already holds, so THIS refusal comes
 				 * from the DECLARE_CLASS opcode at run time -- and its stack trace
 				 * carries the include/require that loaded the unit, where every other
@@ -182,6 +182,39 @@ static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pCla
 		}
 	}
 	return SXRET_OK;
+}
+/*
+ * php early-binds only a declaration it can link whole at compile time: a class
+ * with an interface, a trait, a variance pair left open or a parent the file
+ * itself declares that way, and an interface that extends another, are declared
+ * where the statement RUNS, and nothing above it finds them. Such a class is
+ * hidden once its unit has compiled (PH7_VmHideClasses) and declared by the
+ * PH7_OP_CLASS_DECLARE emitted here, at the statement.
+ */
+static void GenStateHideUntilDeclared(ph7_gen_state *pGen,ph7_class *pClass,sxu32 nLine)
+{
+	sxu32 nIdx;
+	if( SySetPut(&pGen->pVm->aHiddenClass,(const void *)&pClass) != SXRET_OK ){
+		return;
+	}
+	pClass->iFlags |= PH7_CLASS_LATEBIND;
+	if( PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLASS_DECLARE,0,0,(void *)pClass,&nIdx) == SXRET_OK
+	 && nLine > 0 ){
+		VmInstr *pInstr = PH7_VmGetInstr(pGen->pVm,nIdx);
+		if( pInstr ){
+			pInstr->nLine = nLine;
+		}
+	}
+}
+/* Is this freshly compiled top-level declaration one php declares only where it runs? */
+static int GenStateDeclaredWhereRun(ph7_gen_state *pGen,ph7_class *pClass,int bOpenPair)
+{
+	if( pGen->nErr > 0 || pGen->pVm->bCompilingBuiltin
+	 || (pClass->iFlags & PH7_CLASS_TOPLEVEL) == 0 ){
+		return 0;
+	}
+	return (pClass->iFlags & PH7_CLASS_BOUND) == 0 || bOpenPair
+		|| (pClass->pBase && (pClass->pBase->iFlags & PH7_CLASS_LATEBIND));
 }
 /*
  * Extract the visibility level associated with a given keyword.
@@ -3664,6 +3697,9 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
+	if( GenStateDeclaredWhereRun(pGen,pClass,0) ){
+		GenStateHideUntilDeclared(pGen,pClass,nLine);
+	}
 done:
 	SySetRelease(&aExtraParents);
 	pGen->pCurClass = pSavedCurClass;
@@ -6008,6 +6044,7 @@ static sxi32 GenStateCompileClassBody(ph7_gen_state *pGen,sxi32 iFlags,
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
+	pGen->pDeclClass = pClass;
 done:
 	pGen->pCurClass = pSavedCurClass;
 	pGen->pCurBase = pSavedCurBase;
@@ -6031,14 +6068,22 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	struct VmClassObligeSet *pSaved = pGen->pOblige;
 	VmClassObligeSet sOblige;
 	sxu32 nDeclLine = pGen->pIn ? pGen->pIn->nLine : 0;
+	ph7_class *pDecl;
+	int bHide = 0;
 	sxi32 rc;
 	SySetInit(&sOblige.aOblige,&pGen->pVm->sAllocator,sizeof(VmClassOblige));
 	SySetInit(&sOblige.aName,&pGen->pVm->sAllocator,sizeof(SyString));
 	sOblige.bDone = 0;
 	/* A check compile links nothing, and `phl -l` runs nothing to settle at. */
 	pGen->pOblige = (pGen->bDeclCheck || pGen->pVm->bSyntaxCheck) ? 0 : &sOblige;
+	pGen->pDeclClass = 0;
 	rc = GenStateCompileClassBody(pGen,iFlags,pAnonName,ppArgStart,ppArgEnd);
 	pGen->pOblige = pSaved;
+	pDecl = pGen->pDeclClass;
+	pGen->pDeclClass = 0;
+	/* Decided before the settling is emitted, which runs first. */
+	bHide = rc == SXRET_OK && pDecl && pAnonName == 0
+		&& GenStateDeclaredWhereRun(pGen,pDecl,SySetUsed(&sOblige.aOblige) > 0);
 	if( rc == SXRET_OK && SySetUsed(&sOblige.aOblige) > 0 ){
 		VmClassObligeSet *pSet = (VmClassObligeSet *)SyMemBackendAlloc(&pGen->pVm->sAllocator,
 			sizeof(VmClassObligeSet));
@@ -6061,10 +6106,13 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				pInstr->nLine = nDeclLine;
 			}
 		}
-		return SXRET_OK;
+	}else{
+		SySetRelease(&sOblige.aOblige);
+		SySetRelease(&sOblige.aName);
 	}
-	SySetRelease(&sOblige.aOblige);
-	SySetRelease(&sOblige.aName);
+	if( bHide ){
+		GenStateHideUntilDeclared(pGen,pDecl,nDeclLine);
+	}
 	return rc;
 }
 /* Compile a named class declaration (the common case). */

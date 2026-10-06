@@ -978,7 +978,7 @@ static void OvAddName(ph7_vm *pVm,ph7_class *pScope,OvType *pT,const SyString *p
 	 * reference or a class no lookup can produce. It stays an atom of its own,
 	 * known only by name -- php's unresolved class, which still decides every
 	 * question its name or its being SOME class answers (OvCheck). */
-	pE = SyHashGet(&pVm->hClass,(const void *)z,n);
+	pE = PH7_VmClassEntry(pVm,z,n);
 	if( pE == 0 ){
 		/* ...except the class being declared, which is not filed yet while its
 		 * own inheritance runs. */

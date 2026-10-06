@@ -181,7 +181,7 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			sxu32 nNotNew = SyBlobLength(&pTos->sBlob);
 			SyHashEntry *pNotNewEntry;
 			PH7_VmClassNameAnchor(&zNotNew,&nNotNew);
-			pNotNewEntry = nNotNew > 0 ? SyHashGet(&pVm->hClass,(const void *)zNotNew,nNotNew) : 0;
+			pNotNewEntry = nNotNew > 0 ? PH7_VmClassEntry(pVm,zNotNew,nNotNew) : 0;
 			pNotNew = pNotNewEntry ? (ph7_class *)pNotNewEntry->pUserData : 0;
 		}
 		if( pNotNew && (pNotNew->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT|PH7_CLASS_TRAIT)) ){

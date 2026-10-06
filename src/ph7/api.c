@@ -889,6 +889,8 @@ static sxi32 ProcessScript(
 	if( rc != PH7_OK ){
 		goto Release;
 	}
+	/* A class php does not early-bind waits for its statement. */
+	PH7_VmHideClasses(pVm,0);
 	/* Install local import path which is the current directory -- unless the host
 	 * already named one. IMPORT_PATH APPENDS, and a `-d include_path=` handed to
 	 * the engine is applied at VM birth, i.e. before this: the two together

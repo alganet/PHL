@@ -533,7 +533,7 @@ PH7_PRIVATE int vm_builtin_enum_exists(ph7_context *pCtx,int nArg,ph7_value **ap
 			nName = (sxu32)nLen;
 			PH7_VmClassNameAnchor(&zName,&nName);
 			if( nName > 0 ){
-				SyHashEntry *pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
+				SyHashEntry *pEntry = PH7_VmClassEntry(pCtx->pVm,zName,nName);
 				if( pEntry ){
 					pClass = (ph7_class *)pEntry->pUserData;
 					while( pClass && (pClass->iFlags & PH7_CLASS_ENUM) == 0 ){

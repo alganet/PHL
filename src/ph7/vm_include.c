@@ -115,6 +115,7 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	int bNested;
 	int bSavedUnitDecl = pVm->bUnitDecl;
 	sxu32 nUnitDeclMark = SySetUsed(&pVm->aUnitDecl);
+	sxu32 nHiddenMark = SySetUsed(&pVm->aHiddenClass);
 	sxi32 rcThrow = SXRET_OK; /* a ParseError raised for a failed compile, or a throw the
 	                           * evaluated chunk raised — either way the caller must unwind */
 	/* Initialize bytecode container */
@@ -151,6 +152,12 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	PH7_CompileScript(pVm,pChunk,iFlags);
 	pVm->bUnitDecl = 0;
 	PH7_VmUnitDeclEnd(pVm,nUnitDeclMark,pVm->sCodeGen.nErr > 0);
+	if( pVm->sCodeGen.nErr > 0 ){
+		SySetTruncate(&pVm->aHiddenClass,nHiddenMark);
+	}else{
+		/* What php does not early-bind waits for its statement. */
+		PH7_VmHideClasses(pVm,nHiddenMark);
+	}
 	/* Record THIS unit's error count where the nested state restore below cannot
 	 * wipe it — VmExecDeferredClass reads it to detect a failed re-compile. */
 	pVm->nLastEvalErr = pVm->sCodeGen.nErr;

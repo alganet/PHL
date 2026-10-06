@@ -3110,6 +3110,16 @@ case PH7_OP_CLASS_OBLIGE:
 	}
 	break;
 /*
+ * CLASS_DECLARE: * * P3
+ *
+ * Declare P3, a top-level class php does not early-bind, where its statement runs.
+ */
+case PH7_OP_CLASS_DECLARE:
+	if( pInstr->p3 && PH7_VmDeclareHiddenClass(&(*pVm),(ph7_class *)pInstr->p3) == SXERR_ABORT ){
+		goto Abort;
+	}
+	break;
+/*
  * CVT_INT: * * *
  *
  * Force the top of the stack to be an integer.

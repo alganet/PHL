@@ -1236,6 +1236,7 @@ struct ph7_gen_state
 	                      * the pair is accepted). php declares such a class when its
 	                      * statement RUNS and settles the pair there (PH7_OP_CLASS_OBLIGE). */
 	int bObligeRun;      /* ...and that settling, at run time: an unresolved pair is final. */
+	ph7_class *pDeclClass; /* The class the declaration just compiled installed (0: none). */
 	SyBlob sNamespace;   /* Current namespace path (e.g. "App\\Models") */
 	SyHash hUseImports;      /* use imports: short alias -> FQN (classes) */
 	SyHash hUseFuncImports;  /* use function imports: short alias -> FQN */
@@ -2685,6 +2686,12 @@ struct ph7_class
                                         * the unimplemented-abstract count -- is then skipped, which is
                                         * what php does: it reports those only for a class it could
                                         * EARLY-BIND, and it binds nothing whose base it cannot see. */
+#define PH7_CLASS_LATEBIND    0x1000000 /* Not early-bound: php declares this top-level class where its
+                                     * statement RUNS (PH7_OP_CLASS_DECLARE). Set by the compile that
+                                     * links it, so a subclass in the same file is not early-bound either. */
+#define PH7_CLASS_HIDDEN      0x800000 /* ...and its unit has finished compiling while that statement has not
+                                     * run: it keeps its hClass slot, but no lookup by name finds it
+                                     * (PH7_VmClassEntry). Both flags clear when it is declared. */
 #define PH7_CLASS_TOPLEVEL    0x200000 /* Declared UNCONDITIONALLY at file top level. php runs such a
                                      * declaration whatever else is in the file, so two of them under one
                                      * name is a redeclaration even when neither was early-bound -- which
@@ -4794,6 +4801,8 @@ struct ph7_vm
 	                            * declarations back out (VmEvalChunk). Logged only while
 	                            * bUnitDecl is set: never the main script, never at run time. */
 	int bUnitDecl;             /* 1 while VmEvalChunk is compiling a unit */
+	SySet aHiddenClass;        /* ph7_class* -- the PH7_CLASS_LATEBIND classes the compiles in flight
+	                            * have linked, hidden when their unit finishes (PH7_VmHideClasses). */
 	SyHash hCallName;          /* The callee names aCallSite records point at, interned. 43,375
 	                            * call sites execute on the ecosystem gate's phpcs step and they
 	                            * spell only a few thousand distinct names between them, so a
@@ -5392,6 +5401,8 @@ enum ph7_vm_op {
   PH7_OP_CLASS_OBLIGE,  /* Settle a class's unresolved variance pairs where its declaration
                          * RUNS: p3 = VmClassObligeSet. Autoloads what they name, then checks
                          * them again; one still open is php's compile fatal. */
+  PH7_OP_CLASS_DECLARE, /* Declare a class php does not early-bind where its statement RUNS:
+                         * p3 = the PH7_CLASS_HIDDEN class, put into hClass here. */
   PH7_OP_SNAPSHOT       /* Give the top P1 stack slots their own copy of the string bytes they
                          * were loaded from (P1 = 0 means the top slot alone). A value copy only
                          * BORROWS the source's bytes (PH7_MemObjLoad), which is right while the
@@ -6129,6 +6140,9 @@ PH7_PRIVATE void PH7_VmApplyEngineIni(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmGetIncludePath(ph7_vm *pVm,SyBlob *pOut);
 PH7_PRIVATE int PH7_VmExecutingDir(ph7_vm *pVm,SyString *pOut);
 PH7_PRIVATE ph7_class * PH7_VmExtractClass(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable,sxi32 iNest);
+PH7_PRIVATE void PH7_VmHideClasses(ph7_vm *pVm,sxu32 nMark);
+PH7_PRIVATE sxi32 PH7_VmDeclareHiddenClass(ph7_vm *pVm,ph7_class *pClass);
+PH7_PRIVATE SyHashEntry * PH7_VmClassEntry(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE void PH7_VmClassNameAnchor(const char **pzName,sxu32 *pnByte);
 PH7_PRIVATE sxi32 PH7_VmMaterializeClassConst(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE ph7_class * PH7_VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable);

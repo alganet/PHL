@@ -957,6 +957,91 @@ PH7_PRIVATE void PH7_VmUnitDeclEnd(ph7_vm *pVm,sxu32 nMark,int bFailed)
 	SySetTruncate(&pVm->aUnitDecl,nMark);
 }
 /*
+ * Hide every class aHiddenClass lists from nMark on: its unit has compiled it,
+ * and php declares it only where its statement runs (PH7_OP_CLASS_DECLARE). It
+ * keeps its slot in hClass -- php files it at compile time too, under a key no
+ * lookup matches, so get_declared_classes() lists it in FILE order -- and every
+ * lookup by name passes over it (PH7_VmClassEntry) until then.
+ */
+PH7_PRIVATE void PH7_VmHideClasses(ph7_vm *pVm,sxu32 nMark)
+{
+	ph7_class **apClass = (ph7_class **)SySetBasePtr(&pVm->aHiddenClass);
+	sxu32 n;
+	for( n = nMark ; n < SySetUsed(&pVm->aHiddenClass) ; n++ ){
+		apClass[n]->iFlags |= PH7_CLASS_HIDDEN;
+	}
+	SySetTruncate(&pVm->aHiddenClass,nMark);
+}
+/*
+ * The hClass entry a lookup BY NAME finds: none when every class filed under the
+ * name still waits for its statement.
+ */
+PH7_PRIVATE SyHashEntry * PH7_VmClassEntry(ph7_vm *pVm,const char *zName,sxu32 nByte)
+{
+	SyHashEntry *pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
+	ph7_class *pClass;
+	if( pEntry == 0 ){
+		return 0;
+	}
+	for( pClass = (ph7_class *)pEntry->pUserData ; pClass ; pClass = pClass->pNextName ){
+		if( (pClass->iFlags & PH7_CLASS_HIDDEN) == 0 ){
+			return pEntry;
+		}
+	}
+	return 0;
+}
+/*
+ * PH7_OP_CLASS_DECLARE: the statement of a class php did not early-bind runs, and
+ * the class takes its name only now. A name something else took meanwhile (an
+ * autoloader asked for it above the statement) is php's redeclaration fatal.
+ */
+PH7_PRIVATE sxi32 PH7_VmDeclareHiddenClass(ph7_vm *pVm,ph7_class *pClass)
+{
+	ph7_gen_state *pGen = &pVm->sCodeGen;
+	SyHashEntry *pEntry;
+	ph7_class *pPrev;
+	if( (pClass->iFlags & PH7_CLASS_HIDDEN) == 0 ){
+		return SXRET_OK;
+	}
+	pEntry = SyHashGet(&pVm->hClass,(const void *)pClass->sName.zString,pClass->sName.nByte);
+	for( pPrev = pEntry ? (ph7_class *)pEntry->pUserData : 0 ; pPrev ; pPrev = pPrev->pNextName ){
+		const char *zKind;
+		if( pPrev == pClass || (pPrev->iFlags & PH7_CLASS_HIDDEN) ){
+			continue;
+		}
+		zKind = (pPrev->iFlags & PH7_CLASS_INTERFACE) ? "interface"
+			: (pPrev->iFlags & PH7_CLASS_TRAIT) ? "trait"
+			: (pPrev->iFlags & PH7_CLASS_ENUM) ? "enum" : "class";
+		/* php's compile fatal, raised from the declaration (PH7_ClassSettleObligations
+		 * borrows the generator the same way). */
+		{
+			ProcConsumer xSavedErr = pGen->xErr;
+			void *pSavedErrData = pGen->pErrData;
+			sxu32 nErr = pGen->nErr;
+			pGen->xErr = pVm->pEngine->xConf.xErr;
+			pGen->pErrData = pVm->pEngine->xConf.pErrData;
+			pGen->iFatalTrace = PH7_FATAL_TRACE_RUNTIME;
+			if( pPrev->sFile.nByte > 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+					"Cannot redeclare %s %z (previously declared in %.*s:%u)",
+					zKind,&pClass->sDisp,pPrev->sFile.nByte,pPrev->sFile.zString,pPrev->nLine);
+			}else{
+				PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+					"Cannot redeclare %s %z",zKind,&pClass->sDisp);
+			}
+			pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
+			pGen->nErr = nErr;
+			pGen->xErr = xSavedErr;
+			pGen->pErrData = pSavedErrData;
+		}
+		pVm->iExitStatus = 255;
+		pVm->bHaltRequested = 1;
+		return SXERR_ABORT;
+	}
+	pClass->iFlags &= ~(PH7_CLASS_HIDDEN|PH7_CLASS_LATEBIND);
+	return SXRET_OK;
+}
+/*
  * Install a user defined function in the corresponding VM container.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(
@@ -3235,6 +3320,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aCallSite,&pVm->sAllocator,sizeof(VmCallSite));
 	SyHashInit(&pVm->hCallName,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aUnitDecl,&pVm->sAllocator,sizeof(VmUnitDecl));
+	SySetInit(&pVm->aHiddenClass,&pVm->sAllocator,sizeof(ph7_class *));
 	pVm->bUnitDecl = 0;
 	pVm->nFreeCallSite = 0;
 	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));
@@ -9311,6 +9397,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_FUNC_DECL:  zOp = "FUNC_DECL  "; break;
 	case PH7_OP_CLASS_DEFER:zOp = "CLASS_DEFER"; break;
 	case PH7_OP_CLASS_OBLIGE:zOp = "CLASS_OBLIGE"; break;
+	case PH7_OP_CLASS_DECLARE:zOp = "CLASS_DECLARE"; break;
 	case PH7_OP_CONST_DECL: zOp = "CONST_DECL "; break;
 	case PH7_OP_LOAD_EXCEPTION:
 		                    zOp = "LOAD_EXCEP "; break;
@@ -9640,11 +9727,12 @@ PH7_PRIVATE int PH7_VmNameIsInternalFunc(ph7_vm *pVm,const char *zName,sxu32 nBy
  */
 static ph7_class * VmFilterLoadableClass(ph7_class *pClass,sxi32 iLoadable)
 {
-	if( !iLoadable ){
-		return pClass;
+	sxi32 iSkip = PH7_CLASS_HIDDEN;
+	if( iLoadable ){
+		iSkip |= PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT|PH7_CLASS_TRAIT;
 	}
 	while(pClass){
-		if( (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT|PH7_CLASS_TRAIT)) == 0 ){
+		if( (pClass->iFlags & iSkip) == 0 ){
 			return pClass;
 		}
 		pClass = pClass->pNextName;
@@ -9787,7 +9875,7 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
 	if( nByte < 1 ){
 		return 0;
 	}
-	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
+	pEntry = PH7_VmClassEntry(pVm,zName,nByte);
 	if( pEntry == 0 ){
 		/* Class not found in hash table — try autoload before giving up */
 		return VmTriggerAutoload(pVm,zName,nByte,iLoadable);
