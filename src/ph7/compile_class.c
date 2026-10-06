@@ -6205,6 +6205,7 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	SyToken *pArgStart,*pArgEnd;
 	SyToken *pTokKw;
 	sxi32 iAnonFlags = 0;
+	int bRecompile = 0;
 	ph7_value *pObj;
 	sxu32 nLine = pGen->pIn->nLine;
 	sxu32 nIdx,nLen;
@@ -6223,6 +6224,7 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	if( pGen->pVm->sDeferAnonName.nByte > 0 ){
 		/* Deferred re-compile (VmExecDeferredClass): install under the SAME
 		 * synthesized name the original site's OP_NEW loads. One-shot. */
+		bRecompile = 1;
 		sName = pGen->pVm->sDeferAnonName;
 		nLen = sName.nByte;
 		pGen->pVm->sDeferAnonName.zString = 0;
@@ -6303,6 +6305,18 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 				if( pAnonClass && GenStateCheckAttrPlacement(&(*pGen),&pAnonClass->aAttrs,
 						pAnonClass->nLine,1,1,&pAnonClass->sDisp,pAnonClass->iFlags) == SXERR_ABORT ){
 					return SXERR_ABORT;
+				}
+				if( pAnonClass && !bRecompile && !pGen->pVm->bSyntaxCheck
+				 && !pGen->pVm->bCompilingBuiltin && pGen->nErr == 0
+				 && (pAnonClass->pBase || SySetUsed(&pAnonClass->aInterface) > 0
+				  || SySetUsed(&pAnonClass->aTrait) > 0
+				  || SyHashGet(&pAnonClass->hMethod,"__toString",sizeof("__toString")-1)) ){
+					/* php links an anonymous class at compile time only when it has
+					 * no parent, no interface (__toString brings Stringable) and no
+					 * trait; any other one is linked by its DECLARE_ANON_CLASS, and
+					 * get_declared_classes() lists it only once that has run. A
+					 * deferred re-compile already runs where the expression does. */
+					GenStateHideUntilDeclared(pGen,pAnonClass,nLine);
 				}
 				if( pAnonClass ){
 					/* php's DECLARE_ANON_CLASS runs BEFORE the constructor arguments, and
